@@ -1,0 +1,340 @@
+// 개선된 유치원 캐시 매니저
+import { createClient } from '@supabase/supabase-js'
+import { supabase } from '../lib/supabase'
+import { regionCodes } from './kindergartenApi'
+
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL
+const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY
+
+// 디버깅을 위한 로그
+console.log('환경 변수 확인:', {
+  supabaseUrl: supabaseUrl ? '설정됨' : '설정되지 않음',
+  supabaseKey: supabaseKey ? '설정됨' : '설정되지 않음',
+  allEnvKeys: Object.keys(process.env).filter(key => key.startsWith('REACT_APP_'))
+})
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('Supabase 환경 변수가 설정되지 않았습니다. .env 파일을 확인해주세요.')
+  console.error('필요한 환경 변수: REACT_APP_SUPABASE_URL, REACT_APP_SUPABASE_ANON_KEY')
+  throw new Error('Supabase 환경 변수가 필요합니다.')
+}
+
+export interface KindergartenInfo {
+  kinderCode: string
+  officeedu: string
+  subofficeedu: string
+  kindername: string
+  establish: string
+  rppnname: string
+  ldgrname: string
+  edate: string
+  odate: string
+  addr: string
+  telno: string
+  faxno: string
+  hpaddr: string
+  opertime: string
+  clcnt3: number
+  clcnt4: number
+  clcnt5: number
+  mixclcnt: number
+  shclcnt: number
+  prmstfcnt: number
+  ag3fpcnt: number
+  ag4fpcnt: number
+  ag5fpcnt: number
+  mixfpcnt: number
+  spcnfpcnt: number
+  ppcnt3: number
+  ppcnt4: number
+  ppcnt5: number
+  mixppcnt: number
+  shppcnt: number
+  pbnttmng: string
+  rpstYn: string
+  lttdcdnt: number
+  lngtcdnt: number
+}
+
+export interface CacheEnvelope {
+  meta: {
+    sido: string
+    sgg: string
+    lastSyncedAt: string // ISO
+    itemCount: number
+    apiVersion?: string
+  }
+  data: KindergartenInfo[]
+}
+
+export interface CacheMetadata {
+  sido: string
+  sgg: string
+  lastUpdated: string
+  dataCount: number
+  filePath: string
+  isExpired?: boolean
+}
+
+export class KindergartenCacheManager {
+  private supabase = supabase // 기존 Supabase 클라이언트 재사용
+  private bucketName = 'kindergarten-cache'
+  private cacheExpiryDays = 7 // 7일 후 만료
+
+  // ASCII 전용 경로: regions/{sidoCode}/{sggCode}/...
+  private pathPrefixByCode(sidoCode: string, sggCode: string): string {
+    return `regions/${sidoCode}/${sggCode}` // 예: regions/11/11680
+  }
+
+  private latestPathByCode(sidoCode: string, sggCode: string): string {
+    return `${this.pathPrefixByCode(sidoCode, sggCode)}/latest.json`
+  }
+
+  // 레거시 경로 생성 헬퍼 (한글 기반 - 폴백용)
+  private pathPrefixLegacy(sido: string, sgg: string): string {
+    const encodedSido = encodeURIComponent(sido)
+    const encodedSgg = encodeURIComponent(sgg)
+    return `regions/${encodedSido}/${encodedSgg}`
+  }
+  
+  // 지역 코드 찾기 - API의 regionCodes 사용
+  private findRegionCodes(sido: string, sgg: string): { sidoCode: string, sggCode: string } {
+    const sidoData = regionCodes[sido as keyof typeof regionCodes]
+    if (!sidoData) {
+      throw new Error(`지원하지 않는 시도: ${sido}`)
+    }
+    
+    const sggCode = sidoData.sggCodes[sgg as keyof typeof sidoData.sggCodes]
+    if (sggCode === undefined) {
+      throw new Error(`지원하지 않는 시군구: ${sgg}`)
+    }
+    
+    return {
+      sidoCode: sidoData.sidoCode.toString(),
+      sggCode: String(sggCode)
+    }
+  }
+
+  private snapshotPathByCode(sidoCode: string, sggCode: string, isoDate: string): string {
+    return `${this.pathPrefixByCode(sidoCode, sggCode)}/${isoDate}.json`
+  }
+
+  // 최신 캐시 데이터 조회 (코드 기반)
+  async getCachedDataByCode(sidoCode: string, sggCode: string): Promise<KindergartenInfo[] | null> {
+    try {
+      const latestKey = this.latestPathByCode(sidoCode, sggCode)
+      
+      // 파일 존재 여부를 먼저 확인 (오류 로그 방지)
+      const { data: fileList, error: listError } = await this.supabase.storage
+        .from(this.bucketName)
+        .list(this.pathPrefixByCode(sidoCode, sggCode))
+
+      // 디렉토리나 파일이 없는 경우
+      if (listError || !fileList || fileList.length === 0) {
+        console.log(`📁 Storage에 캐시 없음: ${sidoCode}/${sggCode}`)
+        return null
+      }
+
+      // latest.json 파일이 있는지 확인
+      const hasLatestFile = fileList.some(file => file.name === 'latest.json')
+      if (!hasLatestFile) {
+        console.log(`📁 Storage에 캐시 없음: ${sidoCode}/${sggCode}`)
+        return null
+      }
+
+      // 파일 다운로드
+      const { data, error } = await this.supabase.storage
+        .from(this.bucketName)
+        .download(latestKey)
+
+      if (error || !data) {
+        console.log(`캐시 읽기 실패: ${sidoCode}/${sggCode}`)
+        return null
+      }
+
+      const text = await data.text()
+      const envelope: CacheEnvelope = JSON.parse(text)
+
+      // TTL 체크 (내부 메타 기준)
+      const lastSynced = new Date(envelope.meta.lastSyncedAt).getTime()
+      const ageDays = (Date.now() - lastSynced) / (1000 * 60 * 60 * 24)
+      
+      if (ageDays > this.cacheExpiryDays) {
+        console.log(`캐시 만료: ${sidoCode}/${sggCode} (${ageDays.toFixed(1)}일 경과)`)
+        return null
+      }
+
+      console.log(`✅ 캐시 사용: ${sidoCode}/${sggCode} (${envelope.data.length}개 데이터, ${ageDays.toFixed(1)}일 전)`)
+      return envelope.data
+
+    } catch (error) {
+      // JSON 파싱 오류 등 실제 오류만 로그 출력
+      console.error('캐시 조회 오류:', error)
+      return null
+    }
+  }
+
+  // 기존 메서드 (호환성 유지)
+  async getCachedData(sido: string, sgg: string): Promise<KindergartenInfo[] | null> {
+    const { sidoCode, sggCode } = this.findRegionCodes(sido, sgg)
+    return this.getCachedDataByCode(sidoCode, sggCode)
+  }
+
+  // 캐시 메타데이터 조회
+  async getCacheMetadata(sido: string, sgg: string): Promise<CacheMetadata | null> {
+    try {
+      const { sidoCode, sggCode } = this.findRegionCodes(sido, sgg)
+      const path = this.pathPrefixByCode(sidoCode, sggCode)
+      const { data: files, error } = await this.supabase.storage
+        .from(this.bucketName)
+        .list(path, { 
+          limit: 1, 
+          sortBy: { column: 'updated_at', order: 'desc' } 
+        })
+
+      if (error || !files || files.length === 0) {
+        return null
+      }
+
+      const file = files[0]
+      const lastUpdated = new Date(file.updated_at)
+      const ageDays = (Date.now() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24)
+      
+      return {
+        sido,
+        sgg,
+        lastUpdated: file.updated_at,
+        dataCount: 0, // 실제로는 latest.json 파싱해서 확인
+        filePath: `${path}/${file.name}`,
+        isExpired: ageDays > this.cacheExpiryDays
+      }
+    } catch (error) {
+      console.error('캐시 메타데이터 조회 오류:', error)
+      return null
+    }
+  }
+
+  // 캐시 삭제 (강제 새로고침용)
+  async deleteCache(sido: string, sgg: string): Promise<void> {
+    try {
+      const { sidoCode, sggCode } = this.findRegionCodes(sido, sgg)
+      const base = this.pathPrefixByCode(sidoCode, sggCode)
+      const { data: files } = await this.supabase.storage
+        .from(this.bucketName)
+        .list(base)
+
+      if (!files || files.length === 0) {
+        console.log(`삭제할 캐시 없음: ${sido}/${sgg}`)
+        return
+      }
+
+      const targets = files.map(f => `${base}/${f.name}`)
+      const { error } = await this.supabase.storage
+        .from(this.bucketName)
+        .remove(targets)
+
+      if (error) {
+        throw error
+      }
+
+      console.log(`🗑️ 캐시 삭제 완료: ${sido}/${sgg} (${targets.length}개 파일)`)
+    } catch (error) {
+      console.error('캐시 삭제 오류:', error)
+      throw error
+    }
+  }
+
+  // 오래된 캐시 정리
+  async cleanupOldCache(sido?: string, sgg?: string): Promise<void> {
+    try {
+      const root = sido && sgg ? this.pathPrefixByCode(this.findRegionCodes(sido, sgg).sidoCode, this.findRegionCodes(sido, sgg).sggCode) : 'regions'
+      const { data: files } = await this.supabase.storage
+        .from(this.bucketName)
+        .list(root, { limit: 1000 })
+
+      if (!files) return
+
+      const cutoff = Date.now() - this.cacheExpiryDays * 24 * 60 * 60 * 1000
+      const toDelete: string[] = []
+
+      for (const file of files) {
+        const updated = new Date(file.updated_at).getTime()
+        // latest.json은 제외하고 오래된 파일만 삭제
+        if (updated < cutoff && file.name !== 'latest.json') {
+          toDelete.push(`${root}/${file.name}`)
+        }
+      }
+
+      if (toDelete.length > 0) {
+        await this.supabase.storage
+          .from(this.bucketName)
+          .remove(toDelete)
+        console.log(`🧹 오래된 캐시 정리 완료: ${toDelete.length}개 파일 삭제`)
+      }
+    } catch (error) {
+      console.error('캐시 정리 오류:', error)
+    }
+  }
+
+  // 캐시 상태 확인 (여러 지역)
+  async getMultipleCacheStatus(regions: Array<{sido: string, sgg: string}>): Promise<Record<string, CacheMetadata | null>> {
+    const results: Record<string, CacheMetadata | null> = {}
+    
+    await Promise.all(
+      regions.map(async ({sido, sgg}) => {
+        const key = `${sido}/${sgg}`
+        try {
+          results[key] = await this.getCacheMetadata(sido, sgg)
+        } catch (error) {
+          console.error(`캐시 상태 확인 오류: ${key}`, error)
+          results[key] = null
+        }
+      })
+    )
+    
+    return results
+  }
+
+  // 캐시 통계 조회
+  async getCacheStats(): Promise<{
+    totalRegions: number
+    validCaches: number
+    expiredCaches: number
+    totalFiles: number
+  }> {
+    try {
+      const { data: files } = await this.supabase.storage
+        .from(this.bucketName)
+        .list('regions', { limit: 1000 })
+
+      if (!files) {
+        return { totalRegions: 0, validCaches: 0, expiredCaches: 0, totalFiles: 0 }
+      }
+
+      const latestFiles = files.filter(f => f.name === 'latest.json')
+      const cutoff = Date.now() - this.cacheExpiryDays * 24 * 60 * 60 * 1000
+      
+      let validCaches = 0
+      let expiredCaches = 0
+
+      for (const file of latestFiles) {
+        const updated = new Date(file.updated_at).getTime()
+        if (updated > cutoff) {
+          validCaches++
+        } else {
+          expiredCaches++
+        }
+      }
+
+      return {
+        totalRegions: latestFiles.length,
+        validCaches,
+        expiredCaches,
+        totalFiles: files.length
+      }
+    } catch (error) {
+      console.error('캐시 통계 조회 오류:', error)
+      return { totalRegions: 0, validCaches: 0, expiredCaches: 0, totalFiles: 0 }
+    }
+  }
+}

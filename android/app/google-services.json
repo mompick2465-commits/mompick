@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "718450219650",
+    "project_id": "mompick-46b2c",
+    "storage_bucket": "mompick-46b2c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:718450219650:android:27413163ca988c3217b29b",
+        "android_client_info": {
+          "package_name": "com.mompick.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDaC9CgRRGytj7e5-K0ClbkkBOD4qebLwk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

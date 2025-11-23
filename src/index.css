@@ -1,0 +1,191 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Tailwind CSS directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 스크롤바 숨김 */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Safari and Chrome */
+}
+
+
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #ffffff;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* 시스템 UI 제외를 위한 설정 */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 상태바 영역 처리 */
+  .status-bar-padding {
+    padding-top: env(safe-area-inset-top);
+    background: #ffffff;
+  }
+
+  /* 상태바 영역 배경 */
+  .status-bar-area {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top);
+    background: #ffffff;
+    z-index: 9999;
+  }
+
+  /* 네비게이션 바 영역 처리 */
+  .navigation-bar-padding {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* 전체 화면 컨테이너 */
+  .full-screen-container {
+    min-height: 100vh;
+    min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
+
+/* 공유 바텀시트 슬라이드 업 애니메이션 */
+@keyframes sheetSlideUp {
+  0% {
+    transform: translateY(64px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 찜하기 하트 파티클 */
+@keyframes heartFloatUp {
+  0% { transform: translateY(6px); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(-36px); opacity: 0; }
+}
+.heart-particle {
+  position: absolute;
+  bottom: 12px;
+  line-height: 1;
+  animation: heartFloatUp 700ms ease-out forwards;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.06);
+}
+
+@keyframes heartBounceOnce {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.animate-heart-bounce {
+  animation: heartBounceOnce 300ms ease-out;
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue-500 hover:bg-blue-600 text-white font-medium py-3 px-4 rounded-xl shadow-sm transition-all duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-purple-500 hover:bg-purple-600 text-white font-medium py-3 px-4 rounded-xl shadow-sm transition-all duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-100 transition-all duration-200 p-4;
+  }
+  
+  .input-field {
+    @apply w-full px-3 py-2 border border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none transition-colors duration-200;
+  }
+  
+  .mobile-container {
+    @apply max-w-sm mx-auto px-4;
+  }
+  
+  .mobile-section {
+    @apply py-4;
+  }
+  
+  /* 스크롤바 숨기기 */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+
+  /* 댓글 모달 애니메이션 */
+  @keyframes slideUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out;
+  }
+
+  @keyframes slideDown {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(100%);
+    }
+  }
+
+  .animate-slide-down {
+    animation: slideDown 0.3s ease-in;
+  }
+
+  /* Blob 애니메이션 */
+  @keyframes blob {
+    0% {
+      transform: translate(0px, 0px) scale(1);
+    }
+    33% {
+      transform: translate(30px, -50px) scale(1.1);
+    }
+    66% {
+      transform: translate(-20px, 20px) scale(0.9);
+    }
+    100% {
+      transform: translate(0px, 0px) scale(1);
+    }
+  }
+
+  .animate-blob {
+    animation: blob 7s infinite;
+  }
+
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+
+  .animation-delay-4000 {
+    animation-delay: 4s;
+  }
+}
+

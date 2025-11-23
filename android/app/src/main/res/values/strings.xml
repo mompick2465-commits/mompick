@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">mompick</string>
+    <string name="title_activity_main">mompick</string>
+    <string name="package_name">com.mompick.app</string>
+    <string name="custom_url_scheme">com.mompick.app</string>
+    
+    <!-- 카카오맵 네이티브 앱 키 (카카오 개발자 콘솔에서 발급받은 키로 교체) -->
+    <string name="kakao_map_native_key">33fa59b279a31538baceafbe0fc32325</string>
+</resources>

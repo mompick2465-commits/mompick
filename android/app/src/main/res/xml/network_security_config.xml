@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- 카카오맵 관련 도메인들 -->
+        <domain includeSubdomains="true">dapi.kakao.com</domain>
+        <domain includeSubdomains="true">apis.map.kakao.com</domain>
+        <domain includeSubdomains="true">map.daumcdn.net</domain>
+        <domain includeSubdomains="true">kakaocdn.net</domain>
+        <domain includeSubdomains="true">daumcdn.net</domain>
+        <domain includeSubdomains="true">t1.daumcdn.net</domain>
+        <domain includeSubdomains="true">t2.daumcdn.net</domain>
+        <domain includeSubdomains="true">t3.daumcdn.net</domain>
+        <domain includeSubdomains="true">t4.daumcdn.net</domain>
+        <domain includeSubdomains="true">t5.daumcdn.net</domain>
+        <domain includeSubdomains="true">t6.daumcdn.net</domain>
+        <domain includeSubdomains="true">t7.daumcdn.net</domain>
+        <domain includeSubdomains="true">t8.daumcdn.net</domain>
+        <domain includeSubdomains="true">t9.daumcdn.net</domain>
+        <domain includeSubdomains="true">t10.daumcdn.net</domain>
+        <domain includeSubdomains="true">t11.daumcdn.net</domain>
+        <domain includeSubdomains="true">t12.daumcdn.net</domain>
+        <domain includeSubdomains="true">t13.daumcdn.net</domain>
+        <domain includeSubdomains="true">t14.daumcdn.net</domain>
+        <domain includeSubdomains="true">t15.daumcdn.net</domain>
+        <domain includeSubdomains="true">t16.daumcdn.net</domain>
+        <domain includeSubdomains="true">t17.daumcdn.net</domain>
+        <domain includeSubdomains="true">t18.daumcdn.net</domain>
+        <domain includeSubdomains="true">t19.daumcdn.net</domain>
+        <domain includeSubdomains="true">t20.daumcdn.net</domain>
+        <domain includeSubdomains="true">t21.daumcdn.net</domain>
+        <domain includeSubdomains="true">t22.daumcdn.net</domain>
+        <domain includeSubdomains="true">t23.daumcdn.net</domain>
+        <domain includeSubdomains="true">t24.daumcdn.net</domain>
+        <domain includeSubdomains="true">t25.daumcdn.net</domain>
+        <domain includeSubdomains="true">t26.daumcdn.net</domain>
+        <domain includeSubdomains="true">t27.daumcdn.net</domain>
+        <domain includeSubdomains="true">t28.daumcdn.net</domain>
+        <domain includeSubdomains="true">t29.daumcdn.net</domain>
+        <domain includeSubdomains="true">t30.daumcdn.net</domain>
+    </domain-config>
+</network-security-config>
