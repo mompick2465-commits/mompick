@@ -118,6 +118,18 @@ serve(async (req) => {
       )
     }
 
+    // FCM 알림 텍스트 길이 제한 (기기 표시 최적화)
+    // 제목: 최대 64자 (FCM 제한), 실제 표시는 약 40-50자
+    // 본문: 최대 1024자 (FCM 제한), 실제 표시는 약 200-240자
+    const truncateText = (text: string, maxLength: number): string => {
+      if (text.length <= maxLength) return text
+      // 한글, 영문 모두 고려하여 마지막 3자리를 '...'으로 대체
+      return text.substring(0, maxLength - 3) + '...'
+    }
+
+    const truncatedTitle = truncateText(title, 64)
+    const truncatedBody = truncateText(body, 240) // 기기 표시 최적화를 위해 240자로 제한
+
     // 서비스 계정 키 확인
     if (!SERVICE_ACCOUNT_KEY_JSON) {
       console.error('FCM_SERVICE_ACCOUNT_KEY가 설정되지 않았습니다.')
@@ -245,8 +257,8 @@ serve(async (req) => {
           const message: any = {
             token: tokenData.token,
             notification: {
-              title,
-              body,
+              title: truncatedTitle,
+              body: truncatedBody,
             },
           }
 

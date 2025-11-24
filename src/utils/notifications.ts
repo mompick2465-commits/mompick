@@ -591,7 +591,7 @@ export const deleteLikeNotification = async (
   }
 }
 
-// 읽지 않은 알림 개수 가져오기
+// 읽지 않은 알림 개수 가져오기 (일반 공지사항 제외, 긴급 알림 포함)
 export const getUnreadNotificationCount = async (userId: string) => {
   try {
     const { count, error } = await supabase
@@ -599,6 +599,7 @@ export const getUnreadNotificationCount = async (userId: string) => {
       .select('*', { count: 'exact', head: true })
       .eq('to_user_id', userId) // 새로운 스키마: to_user_id
       .eq('is_read', false)
+      .neq('type', 'notice') // 일반 공지사항만 제외 (긴급 알림은 포함)
 
     if (error) {
       console.error('알림 개수 조회 오류:', error)

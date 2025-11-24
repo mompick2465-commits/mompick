@@ -4,20 +4,29 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { useNotification } from '../contexts/NotificationContext'
 
+// 공지사항 아이콘 컴포넌트
+const NoticeIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M17 2H20C20.5523 2 21 2.44772 21 3V21C21 21.5523 20.5523 22 20 22H4C3.44772 22 3 21.5523 3 21V3C3 2.44772 3.44772 2 4 2H7V0H9V2H15V0H17V2ZM17 4V6H15V4H9V6H7V4H5V20H19V4H17ZM7 8H17V10H7V8ZM7 12H17V14H7V12Z"></path>
+  </svg>
+)
+
 interface Notification {
   id: string
   to_user_id: string
-  type: 'like' | 'reply' | 'comment' | 'review_like'
-  post_id: string
-  comment_id?: string
-  from_user_id: string
+  type: 'like' | 'reply' | 'comment' | 'review_like' | 'notice' | 'system'
+  post_id: string | null
+  comment_id?: string | null
+  from_user_id: string | null
   payload: {
-    from_user_name: string
-    from_user_profile_image: string
+    from_user_name?: string
+    from_user_profile_image?: string
     post_title?: string
     comment_content?: string
     kindergarten_name?: string
     message?: string
+    title?: string
+    content?: string
   }
   created_at: string
   is_read: boolean
@@ -25,10 +34,15 @@ interface Notification {
   from_user_children_images?: string[]
 }
 
+type TabType = 'received' | 'notice'
+
 const Notifications = () => {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState<TabType>('received')
+  const [selectedNotice, setSelectedNotice] = useState<Notification | null>(null)
+  const [showNoticeModal, setShowNoticeModal] = useState(false)
   const navigate = useNavigate()
   const { refreshUnreadCount } = useNotification()
   
@@ -103,27 +117,48 @@ const Notifications = () => {
 
       // 데이터 구조 변환 (새로운 스키마)
       const formattedNotifications: Notification[] = await Promise.all((data || []).map(async (notification: any) => {
+        // 공지사항 타입인 경우 프로필 정보 조회 생략
+        if (notification.type === 'notice' || notification.type === 'system') {
+          return {
+            id: notification.id,
+            to_user_id: notification.to_user_id,
+            type: notification.type,
+            post_id: notification.post_id,
+            comment_id: notification.comment_id,
+            from_user_id: notification.from_user_id,
+            payload: {
+              title: notification.payload?.title || '공지사항',
+              content: notification.payload?.content || notification.payload?.message || '',
+              message: notification.payload?.message || ''
+            },
+            created_at: notification.created_at,
+            is_read: notification.is_read
+          }
+        }
+        
         // from_user_id로 프로필 정보 조회
         let profileData = null
         
-        // 먼저 id로 조회
-        const { data: profileById } = await supabase
-          .from('profiles')
-          .select('user_type, children_info')
-          .eq('id', notification.from_user_id)
-          .maybeSingle()
-        
-        if (profileById) {
-          profileData = profileById
-        } else {
-          // id로 못 찾으면 auth_user_id로 조회
-          const { data: profileByAuthId } = await supabase
+        if (notification.from_user_id) {
+          // 먼저 id로 조회
+          const { data: profileById } = await supabase
             .from('profiles')
             .select('user_type, children_info')
-            .eq('auth_user_id', notification.from_user_id)
+            .eq('id', notification.from_user_id)
             .maybeSingle()
           
-          profileData = profileByAuthId
+          if (profileById) {
+            profileData = profileById
+          } else {
+            // id로 못 찾으면 auth_user_id로 조회
+            const { data: profileByAuthId } = await supabase
+              .from('profiles')
+              .select('user_type, children_info')
+              .eq('auth_user_id', notification.from_user_id)
+              .maybeSingle()
+            
+            profileData = profileByAuthId
+          }
         }
         
         const childrenImages = profileData?.user_type === 'parent' && profileData?.children_info
@@ -165,6 +200,13 @@ const Notifications = () => {
       fetchNotifications()
     }
   }, [currentUser])
+
+  // 탭이 변경될 때마다 최신 데이터 가져오기
+  useEffect(() => {
+    if (currentUser) {
+      fetchNotifications()
+    }
+  }, [activeTab, currentUser])
 
 
 
@@ -317,6 +359,11 @@ const Notifications = () => {
           </span>
         )
       }
+    } else if (notification.type === 'notice' || notification.type === 'system') {
+      return {
+        icon: <NoticeIcon className="w-5 h-5 text-[#fb8678]" />,
+        message: notification.payload.title || '공지사항'
+      }
     }
     return {
       icon: <MessageCircle className="w-5 h-5 text-gray-500" />,
@@ -324,10 +371,33 @@ const Notifications = () => {
     }
   }
 
+  // 탭별 알림 필터링
+  const filteredNotifications = notifications.filter(notification => {
+    if (activeTab === 'received') {
+      // 받은 알림: 일반 알림 + 긴급 알림 (일반 공지사항만 제외)
+      return notification.type !== 'notice'
+    } else {
+      // 공지사항: 일반 공지사항만 표시 (system 타입 제외)
+      return notification.type === 'notice'
+    }
+  })
+
+  // 공지사항 중복 제거 (notice_id로 그룹화)
+  const uniqueNotices = activeTab === 'notice' 
+    ? Array.from(
+        new Map(
+          filteredNotifications.map(notice => {
+            const noticeId = (notice.payload as any)?.notice_id || notice.id
+            return [noticeId, notice]
+          })
+        ).values()
+      )
+    : filteredNotifications
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
-      <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+      <div className="bg-white shadow-sm sticky top-0 z-50">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -347,6 +417,36 @@ const Notifications = () => {
             </button>
           </div>
         </div>
+        
+        {/* 탭 메뉴 */}
+        <div className="flex">
+          <button
+            onClick={() => setActiveTab('received')}
+            className={`flex-1 py-3 text-sm font-semibold transition-colors relative ${
+              activeTab === 'received'
+                ? 'text-[#fb8678]'
+                : 'text-gray-500'
+            }`}
+          >
+            받은 알림
+            {activeTab === 'received' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#fb8678]"></div>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('notice')}
+            className={`flex-1 py-3 text-sm font-semibold transition-colors relative ${
+              activeTab === 'notice'
+                ? 'text-[#fb8678]'
+                : 'text-gray-500'
+            }`}
+          >
+            공지사항
+            {activeTab === 'notice' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#fb8678]"></div>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* 알림 목록 */}
@@ -355,16 +455,55 @@ const Notifications = () => {
           <div className="flex justify-center items-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#fb8678]"></div>
           </div>
-        ) : notifications.length === 0 ? (
+        ) : uniqueNotices.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 bg-[#fb8678]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Bell className="w-8 h-8 text-[#fb8678]" />
+              {activeTab === 'notice' ? (
+                <NoticeIcon className="w-8 h-8 text-[#fb8678]" />
+              ) : (
+                <Bell className="w-8 h-8 text-[#fb8678]" />
+              )}
             </div>
-            <p className="text-gray-500 text-sm">새로운 알림이 없습니다.</p>
+            <p className="text-gray-500 text-sm">
+              {activeTab === 'notice' ? '공지사항이 없습니다.' : '새로운 알림이 없습니다.'}
+            </p>
+          </div>
+        ) : activeTab === 'notice' ? (
+          // 공지사항 탭: 카드 그리드 형태
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {uniqueNotices.map((notification) => (
+              <div
+                key={notification.id}
+                className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 hover:border-[#fb8678] hover:shadow-md transition-all cursor-pointer"
+                onClick={() => {
+                  setSelectedNotice(notification)
+                  setShowNoticeModal(true)
+                }}
+              >
+                <div className="flex items-start gap-2 mb-2">
+                  <div className="w-8 h-8 bg-[#fb8678] rounded-lg flex items-center justify-center flex-shrink-0">
+                    <NoticeIcon className="w-4 h-4 text-white" />
+                  </div>
+                  <h3 className="text-sm font-semibold line-clamp-2 flex-1">
+                    {notification.payload.title || '공지사항'}
+                  </h3>
+                </div>
+                <div 
+                  className="text-xs text-gray-600 mb-3 line-clamp-3"
+                  dangerouslySetInnerHTML={{ 
+                    __html: (notification.payload.content || notification.payload.message || '').replace(/<[^>]*>/g, '').substring(0, 100) + '...' 
+                  }}
+                />
+                <p className="text-xs text-gray-400">
+                  {formatTime(notification.created_at)}
+                </p>
+              </div>
+            ))}
           </div>
         ) : (
+          // 받은 알림 탭: 기존 형태
           <div className="space-y-3">
-            {notifications.map((notification) => {
+            {filteredNotifications.map((notification) => {
               const content = getNotificationContent(notification)
               const swipeState = swipeStates[notification.id]
               const translateX = swipeState?.currentX || 0
@@ -386,32 +525,38 @@ const Notifications = () => {
                   onTouchEnd={() => handleTouchEnd(notification.id)}
                 >
                   <div className="flex items-start space-x-3">
-                    {/* 프로필 이미지 */}
+                    {/* 프로필 이미지 또는 공지사항 아이콘 */}
                     <div className="relative flex-shrink-0">
-                      <div className="w-10 h-10 bg-[#fb8678] rounded-2xl flex items-center justify-center shadow-lg overflow-hidden">
-                        {notification.payload.from_user_profile_image ? (
-                          <img
-                            src={notification.payload.from_user_profile_image}
-                            alt="프로필"
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              console.error('프로필 이미지 로딩 실패:', notification.payload.from_user_profile_image)
-                              e.currentTarget.style.display = 'none'
-                              e.currentTarget.nextElementSibling?.classList.remove('hidden')
-                            }}
-                          />
-                        ) : null}
-                        <span className={`text-white font-bold text-sm ${notification.payload.from_user_profile_image ? 'hidden' : ''}`}>👤</span>
-                      </div>
+                      {notification.type === 'notice' || notification.type === 'system' ? (
+                        <div className="w-10 h-10 bg-[#fb8678] rounded-2xl flex items-center justify-center shadow-lg">
+                          <NoticeIcon className="w-5 h-5 text-white" />
+                        </div>
+                      ) : (
+                        <div className="w-10 h-10 bg-[#fb8678] rounded-2xl flex items-center justify-center shadow-lg overflow-hidden">
+                          {notification.payload.from_user_profile_image ? (
+                            <img
+                              src={notification.payload.from_user_profile_image}
+                              alt="프로필"
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                console.error('프로필 이미지 로딩 실패:', notification.payload.from_user_profile_image)
+                                e.currentTarget.style.display = 'none'
+                                e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                              }}
+                            />
+                          ) : null}
+                          <span className={`text-white font-bold text-sm ${notification.payload.from_user_profile_image ? 'hidden' : ''}`}>👤</span>
+                        </div>
+                      )}
                       
-                      {/* 자녀 프로필 사진 배지 (학부모) 또는 교사 배지 (교사) */}
-                      {notification.from_user_type === 'teacher' ? (
+                      {/* 자녀 프로필 사진 배지 (학부모) 또는 교사 배지 (교사) - 공지사항 제외 */}
+                      {notification.type !== 'notice' && notification.type !== 'system' && notification.from_user_type === 'teacher' ? (
                         <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-[0.5px] border-blue-500 bg-white flex items-center justify-center cursor-pointer">
                           <svg className="w-2 h-2 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z"></path>
                           </svg>
                         </div>
-                      ) : notification.from_user_children_images && notification.from_user_children_images.length > 0 && (
+                      ) : notification.type !== 'notice' && notification.type !== 'system' && notification.from_user_children_images && notification.from_user_children_images.length > 0 && (
                         <div className="absolute -bottom-0.5 -right-0.5 flex items-center flex-row-reverse">
                           {/* 3명 이상일 경우 +N 표시 */}
                           {notification.from_user_children_images.length > 2 && (
@@ -477,10 +622,15 @@ const Notifications = () => {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center space-x-2 mb-1">
-                          {content.icon}
-                          <span className="text-sm font-semibold text-gray-900">
-                            {notification.payload.from_user_name}
-                          </span>
+                          {notification.type === 'notice' || notification.type === 'system' ? (
+                            <span className="text-sm font-semibold text-gray-900">
+                              {content.message}
+                            </span>
+                          ) : (
+                            <span className="text-sm font-semibold text-gray-900">
+                              {notification.payload.from_user_name}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center space-x-2">
                           <span className="text-xs text-gray-500 flex-shrink-0">
@@ -499,38 +649,53 @@ const Notifications = () => {
                         </div>
                       </div>
                       
-                      <p className="text-sm text-gray-700 mb-2">
-                        {content.message}
-                      </p>
-
-                      {/* 게시글 제목 또는 댓글 내용 미리보기 */}
-                      {notification.payload.post_title && (
-                        <div className="bg-gray-50 rounded-lg p-2 mb-2">
-                          <p className="text-xs text-gray-600 font-medium">게시글</p>
-                          <p className="text-xs text-gray-800 line-clamp-2">
-                            {notification.payload.post_title.length > 100 
-                              ? notification.payload.post_title.substring(0, 100) + '...' 
-                              : notification.payload.post_title}
-                          </p>
+                      {notification.type === 'notice' || notification.type === 'system' ? (
+                        // 공지사항 내용 (HTML 렌더링)
+                        <div className="mt-2">
+                          <div 
+                            className="text-sm text-gray-700 mb-2 prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{ 
+                              __html: notification.payload.content || notification.payload.message || '' 
+                            }}
+                          />
                         </div>
-                      )}
-
-                      {notification.payload.comment_content && (
-                        <div className="bg-[#fb8678]/10 rounded-lg p-2">
-                          <p className="text-xs text-gray-600 font-medium">댓글</p>
-                          <p className="text-xs text-gray-800 line-clamp-2 font-semibold">
-                            {notification.payload.comment_content}
+                      ) : (
+                        // 일반 알림 내용
+                        <>
+                          <p className="text-sm text-gray-700 mb-2">
+                            {content.message}
                           </p>
-                        </div>
-                      )}
 
-                      {notification.type === 'review_like' && notification.payload.kindergarten_name && (
-                        <div className="bg-orange-50 rounded-lg p-2">
-                          <p className="text-xs text-gray-600 font-medium">유치원</p>
-                          <p className="text-xs text-gray-800 font-semibold">
-                            {notification.payload.kindergarten_name}
-                          </p>
-                        </div>
+                          {/* 게시글 제목 또는 댓글 내용 미리보기 */}
+                          {notification.payload.post_title && (
+                            <div className="bg-gray-50 rounded-lg p-2 mb-2">
+                              <p className="text-xs text-gray-600 font-medium">게시글</p>
+                              <p className="text-xs text-gray-800 line-clamp-2">
+                                {notification.payload.post_title.length > 100 
+                                  ? notification.payload.post_title.substring(0, 100) + '...' 
+                                  : notification.payload.post_title}
+                              </p>
+                            </div>
+                          )}
+
+                          {notification.payload.comment_content && (
+                            <div className="bg-[#fb8678]/10 rounded-lg p-2">
+                              <p className="text-xs text-gray-600 font-medium">댓글</p>
+                              <p className="text-xs text-gray-800 line-clamp-2 font-semibold">
+                                {notification.payload.comment_content}
+                              </p>
+                            </div>
+                          )}
+
+                          {notification.type === 'review_like' && notification.payload.kindergarten_name && (
+                            <div className="bg-orange-50 rounded-lg p-2">
+                              <p className="text-xs text-gray-600 font-medium">유치원</p>
+                              <p className="text-xs text-gray-800 font-semibold">
+                                {notification.payload.kindergarten_name}
+                              </p>
+                            </div>
+                          )}
+                        </>
                       )}
 
 
@@ -541,6 +706,64 @@ const Notifications = () => {
             })}
           </div>
         )}
+
+      {/* 공지사항 상세보기 모달 - 전체 화면 */}
+      {showNoticeModal && selectedNotice && (
+        <div 
+          className="fixed inset-0 bg-white z-50 flex flex-col"
+        >
+          {/* 헤더 */}
+          <div className="p-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowNoticeModal(false)}
+                className="p-2 text-gray-600 hover:text-[#fb8678] transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="w-8 h-8 bg-[#fb8678] rounded-lg flex items-center justify-center">
+                <NoticeIcon className="w-4 h-4 text-white" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900">
+                {selectedNotice.payload.title || '공지사항'}
+              </h2>
+            </div>
+            <button
+              onClick={() => setShowNoticeModal(false)}
+              className="p-2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* 내용 */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div 
+              className="prose prose-xs max-w-none"
+              style={{
+                fontSize: '13px',
+                lineHeight: '1.6'
+              }}
+              dangerouslySetInnerHTML={{ 
+                __html: selectedNotice.payload.content || selectedNotice.payload.message || '' 
+              }}
+            />
+          </div>
+
+          {/* 푸터 */}
+          <div className="p-4 border-t border-gray-200 flex items-center justify-between bg-white">
+            <p className="text-xs text-gray-400">
+              {formatTime(selectedNotice.created_at)}
+            </p>
+            <button
+              onClick={() => setShowNoticeModal(false)}
+              className="px-4 py-2 bg-[#fb8678] text-white rounded-lg hover:bg-[#fb8678]/90 transition-colors text-sm"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   )
