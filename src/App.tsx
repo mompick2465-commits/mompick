@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams, useLocation } from 'react-router-dom'
+import { StatusBar, Style } from '@capacitor/status-bar'
 import Splash from './components/Splash'
 import SignUp from './components/SignUp'
 import Login from './components/Login'
@@ -28,6 +29,9 @@ import WriteReviewPage from './components/WriteReviewPage'
 import WriteChildcareReviewPage from './components/WriteChildcareReviewPage'
 import WritePlaygroundReviewPage from './components/WritePlaygroundReviewPage'
 import PlaygroundReviewPhotosPage from './components/PlaygroundReviewPhotosPage'
+import ContactPage from './components/ContactPage'
+import ContactListPage from './components/ContactListPage'
+import ContactDetailPage from './components/ContactDetailPage'
 import { PageProvider, usePageContext } from './contexts/PageContext'
 import { LikeProvider } from './contexts/LikeContext'
 import { NotificationProvider } from './contexts/NotificationContext'
@@ -404,11 +408,43 @@ function App() {
   // FCM 초기화는 로그인 후에만 실행되도록 변경됨
   // (PhoneLogin, AuthCallback에서 로그인 성공 시 호출)
 
+  // StatusBar 초기화 - Capacitor 플러그인으로 Safe Area 처리
+  useEffect(() => {
+    const initStatusBar = async () => {
+      try {
+        // Capacitor 플랫폼 확인
+        const { Capacitor } = await import('@capacitor/core')
+        
+        if (Capacitor.isNativePlatform()) {
+          // StatusBar가 사용 가능한지 확인
+          if (StatusBar) {
+            // StatusBar가 WebView를 밀어내도록 설정 (overlay: false)
+            // 이렇게 하면 StatusBar 배경이 불투명하게 보입니다
+            await StatusBar.setOverlaysWebView({ overlay: false })
+            // StatusBar 스타일 설정
+            await StatusBar.setStyle({ style: Style.Light })
+            // StatusBar 배경색 설정
+            await StatusBar.setBackgroundColor({ color: '#ffffff' })
+            console.log('✅ StatusBar 플러그인 초기화 완료 (overlay: false)')
+          }
+        }
+      } catch (error) {
+        console.error('StatusBar 초기화 오류:', error)
+      }
+    }
+    initStatusBar()
+  }, [])
+
   return (
     <PageProvider>
       <LikeProvider>
         <NotificationProvider>
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            {/* iOS StatusBar 배경을 위한 고정 영역 */}
+            <div 
+              className="fixed top-0 left-0 right-0 bg-white z-[9998]"
+              style={{ height: 'env(safe-area-inset-top)' }}
+            />
             <div className="App bg-white min-h-screen">
               <Routes>
                 <Route path="/" element={<Splash />} />
@@ -524,6 +560,21 @@ function App() {
                 <Route path="/childcare-apply" element={
                   <ProtectedRoute>
                     <ChildcareApplication />
+                  </ProtectedRoute>
+                } />
+                <Route path="/contact" element={
+                  <ProtectedRoute>
+                    <ContactPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/contact/list" element={
+                  <ProtectedRoute>
+                    <ContactListPage />
+                  </ProtectedRoute>
+                } />
+                <Route path="/contact/:contactId" element={
+                  <ProtectedRoute>
+                    <ContactDetailPage />
                   </ProtectedRoute>
                 } />
               </Routes>

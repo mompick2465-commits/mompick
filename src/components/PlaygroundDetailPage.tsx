@@ -64,6 +64,9 @@ const PlaygroundDetailPage: React.FC = () => {
 	const [reviewsLoading, setReviewsLoading] = useState<boolean>(false)
 	const [reviews, setReviews] = useState<any[]>([])
 	const [reviewStats, setReviewStats] = useState<{ average_rating: number; total_reviews: number; rating_distribution: Record<1|2|3|4|5, number> } | null>(null)
+	const [currentReviewPage, setCurrentReviewPage] = useState<number>(1)
+	const [hasMoreReviews, setHasMoreReviews] = useState<boolean>(true)
+	const [loadingMoreReviews, setLoadingMoreReviews] = useState<boolean>(false)
 	const [helpfulSet, setHelpfulSet] = useState<Set<string>>(new Set())
 	const [showReviewOptions, setShowReviewOptions] = useState<boolean>(false)
 	const [showShareSheet, setShowShareSheet] = useState(false)
@@ -696,6 +699,8 @@ const PlaygroundDetailPage: React.FC = () => {
 		const run = async () => {
 			if (!normalizedId || activeTab !== 'praise') return
 			setReviewsLoading(true)
+			setCurrentReviewPage(1)
+			setHasMoreReviews(true)
 			try {
 				const [stats, list] = await Promise.all([
 					getPlaygroundReviewStats(normalizedId),
@@ -704,6 +709,7 @@ const PlaygroundDetailPage: React.FC = () => {
 				if (!cancelled) {
 					setReviewStats(stats)
 					setReviews(list)
+					setHasMoreReviews(list.length >= 20)
 				}
 				// 사용자 도움됨 목록 및 대기중인 삭제요청 확인 (profile ID 사용)
 				try {
@@ -769,6 +775,48 @@ const PlaygroundDetailPage: React.FC = () => {
 		run()
 		return () => { cancelled = true }
 	}, [normalizedId, currentUserId, activeTab])
+
+	// 무한 스크롤을 위한 Intersection Observer
+	useEffect(() => {
+		if (!hasMoreReviews || loadingMoreReviews || !normalizedId || activeTab !== 'praise') return
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries[0].isIntersecting && hasMoreReviews && !loadingMoreReviews) {
+					setLoadingMoreReviews(true)
+					getPlaygroundReviews(normalizedId, currentReviewPage + 1, 20)
+						.then((newReviews) => {
+							if (newReviews.length > 0) {
+								setReviews(prev => [...prev, ...newReviews])
+								setCurrentReviewPage(prev => prev + 1)
+								setHasMoreReviews(newReviews.length >= 20)
+							} else {
+								setHasMoreReviews(false)
+							}
+						})
+						.catch((err) => {
+							console.error('리뷰 추가 로딩 오류:', err)
+							setHasMoreReviews(false)
+						})
+						.finally(() => {
+							setLoadingMoreReviews(false)
+						})
+				}
+			},
+			{ threshold: 0.1 }
+		)
+
+		const sentinel = document.getElementById('reviews-sentinel')
+		if (sentinel) {
+			observer.observe(sentinel)
+		}
+
+		return () => {
+			if (sentinel) {
+				observer.unobserve(sentinel)
+			}
+		}
+	}, [hasMoreReviews, loadingMoreReviews, currentReviewPage, normalizedId, activeTab])
 
 	// 메뉴 외부 클릭 시 닫기
 	useEffect(() => {
@@ -1167,14 +1215,14 @@ const PlaygroundDetailPage: React.FC = () => {
 		<>
 		<div className="min-h-screen bg-white">
 			<div className="border-b border-gray-200 bg-white shadow-sm">
-				<div className="flex items-center justify-between px-4 py-3">
+				<div className="flex items-center justify-between px-4 py-4">
 					<button
 						type="button"
 						onClick={handleBack}
-						className="rounded-lg p-2 transition-colors hover:bg-gray-100"
+						className="rounded-lg p-1.5 transition-colors hover:bg-white/50"
 						aria-label="지도 페이지로 돌아가기"
 					>
-						<ChevronLeft className="h-5 w-5 text-gray-700" />
+						<ChevronLeft className="h-4 w-4 text-gray-700" />
 					</button>
 					<h1
 						className="mx-3 flex-1 break-words text-lg font-semibold text-gray-900 leading-tight"
@@ -1553,7 +1601,8 @@ const PlaygroundDetailPage: React.FC = () => {
 									<p className="text-gray-500 text-sm">첫 번째 칭찬을 남겨보세요!</p>
 								</div>
 							) : (
-								reviews.map((r) => {
+								<>
+									{reviews.map((r) => {
 									const name = (r.user_profile?.nickname || r.user_profile?.full_name || '익명') as string
 									const initial = name.trim().charAt(0) || '👤'
 									const avatarUrl = (r.user_profile as any)?.profile_image_url as string | undefined
@@ -1714,7 +1763,26 @@ const PlaygroundDetailPage: React.FC = () => {
 											</div>
 										</div>
 									)
-								})
+								})}
+								
+								{/* 무한 스크롤 Sentinel 및 로딩 인디케이터 */}
+								{!reviewsLoading && reviews.length > 0 && (
+									<>
+										<div id="reviews-sentinel" className="h-1" />
+										{loadingMoreReviews && hasMoreReviews && (
+											<div className="text-center py-4">
+												<div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#fb8678] mx-auto mb-2"></div>
+												<p className="text-gray-500 text-xs">칭찬을 불러오는 중...</p>
+											</div>
+										)}
+										{!hasMoreReviews && reviews.length >= 20 && (
+											<div className="text-center py-4">
+												<p className="text-gray-500 text-xs">모든 칭찬을 불러왔습니다.</p>
+											</div>
+										)}
+									</>
+								)}
+							</>
 							)}
 						</div>
 					</div>
@@ -1748,7 +1816,7 @@ const PlaygroundDetailPage: React.FC = () => {
 					</button>
 				</div>
 			)}
-			<div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 h-20 flex items-center p-3">
+			<div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-white/50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1),0_-2px_4px_-1px_rgba(0,0,0,0.06)] h-[70px] flex items-center py-2 px-3">
 				<div className="flex space-x-3 w-full">
 					<button
 						onClick={openShareSheet}
@@ -1968,7 +2036,7 @@ const PlaygroundDetailPage: React.FC = () => {
 				</div>
 			)}
 
-			<div className="h-20 bg-white" />
+			<div className="h-[70px] bg-white" />
 		</div>
 
 		{/* 삭제 확인 모달 */}

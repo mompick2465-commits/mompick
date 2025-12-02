@@ -121,7 +121,7 @@ const Hero = () => {
   }
 
   return (
-    <section className="bg-white">
+    <section className="bg-white pb-12">
       {/* Advertisement Slider */}
       {!loading && advertisements.length > 0 && (
         <div className="p-4">
@@ -278,7 +278,7 @@ const Hero = () => {
           </div>
 
           {/* Community Quick Access */}
-          <div className="bg-gradient-to-r from-[#fb8678]/10 to-[#e67567]/10 rounded-xl p-4 border border-[#fb8678]/20">
+          <div className="bg-gradient-to-r from-[#fb8678]/10 to-[#e67567]/10 rounded-xl p-4 border border-[#fb8678]/20 mb-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 bg-[#fb8678]/20 rounded-lg flex items-center justify-center">

@@ -23,11 +23,25 @@
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* 시스템 UI 제외를 위한 설정 */
-    padding-top: env(safe-area-inset-top);
+    /* iOS에서 시스템 UI와 겹치지 않도록 설정 */
+    margin: 0;
+    overflow-x: hidden;
+  }
+  
+  /* iOS에서 루트 컨테이너가 Safe Area를 고려하도록 설정 */
+  /* overlaysWebView: false일 때는 StatusBar가 WebView를 밀어내므로 padding-top 불필요 */
+  #root {
+    min-height: 100vh;
+    min-height: calc(100vh - env(safe-area-inset-bottom));
+    /* 하단 Safe Area만 적용 (상단은 StatusBar가 처리) */
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+  }
+  
+  /* App 컨테이너는 Safe Area를 상속받음 */
+  .App {
+    min-height: 100%;
   }
   
   * {
@@ -40,7 +54,7 @@
     background: #ffffff;
   }
 
-  /* 상태바 영역 배경 */
+  /* 상태바 영역 배경 - iOS에서 StatusBar 배경을 불투명하게 만들기 */
   .status-bar-area {
     position: fixed;
     top: 0;
@@ -50,6 +64,7 @@
     background: #ffffff;
     z-index: 9999;
   }
+  
 
   /* 네비게이션 바 영역 처리 */
   .navigation-bar-padding {

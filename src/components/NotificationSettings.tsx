@@ -1,18 +1,16 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, Bell, Settings } from 'lucide-react'
+import { ChevronLeft, Bell, Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { 
+  getNotificationSettings, 
+  saveNotificationSettings, 
+  getCurrentUserProfileId,
+  type NotificationSettings as NotificationSettingsType
+} from '../utils/notificationSettings'
 
 type NotificationCategoryKey = 'notice' | 'post' | 'comment' | 'reply' | 'review'
 
-interface NotificationSettingsState {
-  notice: boolean
-  post: boolean
-  comment: boolean
-  reply: boolean
-  review: boolean
-}
-
-const DEFAULT_SETTINGS: NotificationSettingsState = {
+const DEFAULT_SETTINGS: NotificationSettingsType = {
   notice: true,
   post: true,
   comment: true,
@@ -20,35 +18,76 @@ const DEFAULT_SETTINGS: NotificationSettingsState = {
   review: true
 }
 
-const STORAGE_KEY = 'notificationSettings'
-
 const NotificationSettings = () => {
   const navigate = useNavigate()
-  const [settings, setSettings] = useState<NotificationSettingsState>(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState<NotificationSettingsType>(DEFAULT_SETTINGS)
   const [initialized, setInitialized] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  // 서버에서 알림 설정 로드
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed })
+    const loadSettings = async () => {
+      try {
+        setLoading(true)
+        const userId = await getCurrentUserProfileId()
+        
+        if (!userId) {
+          console.log('로그인되지 않은 사용자입니다.')
+          setInitialized(true)
+          return
+        }
+
+        const serverSettings = await getNotificationSettings(userId)
+        setSettings(serverSettings)
+      } catch (e) {
+        console.error('알림 설정 로드 오류:', e)
+        setError('알림 설정을 불러오는데 실패했습니다.')
+      } finally {
+        setLoading(false)
+        setInitialized(true)
       }
-    } catch (e) {
-      console.error('알림 설정 로드 오류:', e)
-    } finally {
-      setInitialized(true)
     }
+
+    loadSettings()
   }, [])
 
+  // 설정 변경 시 서버에 저장
   useEffect(() => {
-    if (!initialized) return
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    } catch (e) {
-      console.error('알림 설정 저장 오류:', e)
+    if (!initialized || loading) return
+
+    const saveSettings = async () => {
+      try {
+        setSaving(true)
+        const userId = await getCurrentUserProfileId()
+        
+        if (!userId) {
+          console.log('로그인되지 않은 사용자입니다.')
+          return
+        }
+
+        const success = await saveNotificationSettings(userId, settings)
+        if (!success) {
+          setError('알림 설정 저장에 실패했습니다.')
+        } else {
+          setError(null)
+        }
+      } catch (e) {
+        console.error('알림 설정 저장 오류:', e)
+        setError('알림 설정 저장 중 오류가 발생했습니다.')
+      } finally {
+        setSaving(false)
+      }
     }
-  }, [initialized, settings])
+
+    // 디바운싱: 500ms 후 저장
+    const timeoutId = setTimeout(() => {
+      saveSettings()
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+  }, [settings, initialized, loading])
 
   const toggleAll = (value: boolean) => {
     setSettings({
@@ -69,7 +108,7 @@ const NotificationSettings = () => {
     { key: 'post', title: '게시글', desc: '내 게시글 관련 활동 알림' },
     { key: 'comment', title: '댓글', desc: '내 게시글에 달린 댓글 알림' },
     { key: 'reply', title: '답글', desc: '내 댓글에 달린 답글 알림' },
-    { key: 'review', title: '리뷰', desc: '리뷰 관련 활동 알림' }
+    { key: 'review', title: '칭찬', desc: '칭찬 관련 활동 알림' }
   ]
 
   const allOn = items.every(i => settings[i.key])
@@ -78,15 +117,15 @@ const NotificationSettings = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
-      <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-        <div className="px-4 py-3">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 shadow-lg sticky top-0 z-10">
+        <div className="px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => navigate(-1)}
-                className="p-2 text-gray-600 hover:text-[#fb8678] transition-colors"
+                className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ChevronLeft className="w-4 h-4 text-gray-700" />
               </button>
               <h1 className="text-lg font-bold text-gray-900">알림 설정</h1>
             </div>
@@ -120,32 +159,44 @@ const NotificationSettings = () => {
             </div>
             <div className="flex-1">
               <p className="text-sm text-gray-800 font-semibold">수신할 알림 유형을 선택하세요</p>
-              <p className="text-xs text-gray-500 mt-1">설정은 이 기기에 저장됩니다. 추후 서버 동기화가 추가될 예정입니다.</p>
+              <p className="text-xs text-gray-500 mt-1">
+                {saving ? '저장 중...' : '설정은 서버에 저장되어 모든 기기에서 동기화됩니다.'}
+              </p>
+              {error && (
+                <p className="text-xs text-red-500 mt-1">{error}</p>
+              )}
             </div>
           </div>
         </div>
 
         {/* 토글 리스트 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y">
-          {items.map(item => (
-            <div key={item.key} className="flex items-center justify-between p-4">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{item.title}</p>
-                <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+        {loading ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
+            <p className="text-sm text-gray-500">알림 설정을 불러오는 중...</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y">
+            {items.map(item => (
+              <div key={item.key} className="flex items-center justify-between p-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{item.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>
+                </div>
+                <button
+                  onClick={() => toggle(item.key)}
+                  disabled={saving}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings[item.key] ? 'bg-[#fb8678]' : 'bg-gray-300'} ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  aria-pressed={settings[item.key]}
+                  aria-label={`${item.title} 알림 ${settings[item.key] ? '켜짐' : '꺼짐'}`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${settings[item.key] ? 'translate-x-5' : 'translate-x-1'}`}
+                  />
+                </button>
               </div>
-              <button
-                onClick={() => toggle(item.key)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${settings[item.key] ? 'bg-[#fb8678]' : 'bg-gray-300'}`}
-                aria-pressed={settings[item.key]}
-                aria-label={`${item.title} 알림 ${settings[item.key] ? '켜짐' : '꺼짐'}`}
-              >
-                <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${settings[item.key] ? 'translate-x-5' : 'translate-x-1'}`}
-                />
-              </button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

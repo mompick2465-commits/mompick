@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Phone, User, Shield, ArrowLeft } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Phone, User, Shield, Heart } from 'lucide-react'
 import { supabase, uploadProfileImage } from '../lib/supabase'
 
 const SignUp = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [step, setStep] = useState<'auth-method' | 'type' | 'phone' | 'verify' | 'profile'>('auth-method')
+  const [step, setStep] = useState<'auth-method' | 'type' | 'phone' | 'verify' | 'profile' | 'success'>('auth-method')
   const [userType, setUserType] = useState<'parent' | 'teacher' | null>(null)
   const [phone, setPhone] = useState('')
   const [verificationCode, setVerificationCode] = useState('')
@@ -216,7 +216,11 @@ const SignUp = () => {
         } else if (errorParam === 'callback_error') {
           setError('인증 처리 중 오류가 발생했습니다. 다시 시도해주세요.')
         } else if (errorParam === 'oauth_error') {
-          setError('OAuth 인증 중 오류가 발생했습니다. 카카오톡 설정을 확인해주세요.')
+          setError('OAuth 인증 중 오류가 발생했습니다. 설정을 확인해주세요.')
+        } else if (errorParam === 'apple_config_error') {
+          setError('애플 로그인 설정 오류입니다.')
+        } else if (errorParam === 'access_denied') {
+          setError('로그인이 취소되었습니다.')
         }
       }
     }
@@ -679,7 +683,7 @@ const SignUp = () => {
         }
         
         if (profileData) {
-          // 기존 사용자인 경우 - 프로필 정보를 localStorage에 저장하고 메인 페이지로 이동
+          // 기존 사용자인 경우 - 프로필 정보를 localStorage에 저장하고 로그인 완료 화면 표시
           console.log('기존 사용자 발견:', profileData)
           localStorage.setItem('isLoggedIn', 'true')
           localStorage.setItem('userProfile', JSON.stringify(profileData))
@@ -688,8 +692,13 @@ const SignUp = () => {
           const { initializeFCM } = await import('../utils/fcm')
           await initializeFCM()
           
-          // 메인 페이지로 이동
-          window.location.href = '/main'
+          // 로그인 완료 화면 표시
+          setStep('success')
+          
+          // 2.5초 후 메인 페이지로 이동
+          setTimeout(() => {
+            window.location.href = '/main'
+          }, 2500)
           return
         } else {
           // 신규 사용자인 경우 - 사용자 타입 선택 단계로
@@ -1012,6 +1021,91 @@ const SignUp = () => {
 
 
 
+  // 로그인 성공 화면 표시
+  if (step === 'success') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-white via-orange-50/30 to-pink-50/30 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="text-center max-w-md w-full"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, type: "spring" }}
+            className="text-center"
+          >
+            <div className="relative inline-block mb-8">
+              {/* 원형 배경 그라데이션 */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[#fb8678] to-[#e67567] rounded-full blur-xl opacity-30 animate-pulse"></div>
+              
+              {/* 하트 컨테이너 */}
+              <div className="relative w-32 h-32 flex items-center justify-center">
+                {/* 빈 하트 (배경) */}
+                <Heart className="absolute w-24 h-24 text-gray-300" strokeWidth={2} fill="none" />
+                
+                {/* 채워지는 하트 - 클리핑으로 구현 */}
+                <div className="absolute w-24 h-24 overflow-hidden">
+                  <motion.div
+                    className="w-full h-full flex items-center justify-center"
+                    initial={{ clipPath: 'inset(100% 0 0 0)' }}
+                    animate={{ clipPath: 'inset(0% 0 0 0)' }}
+                    transition={{ 
+                      duration: 1.2,
+                      ease: [0.4, 0, 0.2, 1],
+                      delay: 0.2
+                    }}
+                  >
+                    <Heart className="w-24 h-24 text-[#fb8678] fill-[#fb8678]" strokeWidth={2} />
+                  </motion.div>
+                </div>
+                
+                {/* 게이지 바 (하트 아래) */}
+                <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-40 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-[#fb8678] to-[#e67567] rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{ 
+                      duration: 1.2,
+                      ease: [0.4, 0, 0.2, 1],
+                      delay: 0.2
+                    }}
+                  />
+                </div>
+              </div>
+              
+              {/* 펄스 효과 */}
+              <motion.div
+                className="absolute inset-0 bg-[#fb8678] rounded-full opacity-20"
+                animate={{ 
+                  scale: [1, 1.3, 1],
+                  opacity: [0.2, 0, 0.2]
+                }}
+                transition={{ 
+                  duration: 2,
+                  repeat: Infinity,
+                  delay: 0.5
+                }}
+              />
+            </div>
+            
+            <motion.h2
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.4 }}
+              className="text-2xl font-bold text-gray-900"
+            >
+              로그인 완료!
+            </motion.h2>
+          </motion.div>
+        </motion.div>
+      </div>
+    )
+  }
+
   return (
     <motion.div 
       className="h-screen bg-white overflow-hidden"
@@ -1023,39 +1117,109 @@ const SignUp = () => {
             onClick={handleGoBack}
             className="p-2 rounded-full bg-transparent transition-colors hover:bg-gray-100"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-600"><path d="m15 18-6-6 6-6"></path></svg>
           </button>
           <div className="flex-1 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">회원가입</h1>
+            <h1 className="text-xl font-bold text-gray-900">회원가입</h1>
           </div>
           <div className="w-10"></div>
         </div>
 
         {/* 진행 단계 표시 */}
         <div className="flex justify-center mb-8">
-          <div className="flex space-x-2">
-            {['auth-method', 'phone', 'verify', 'type', 'profile'].map((stepName, index) => (
-              <div
-                key={stepName}
-                className={`w-3 h-3 rounded-full ${
-                  step === stepName
-                    ? 'bg-orange-500'
-                    : index < ['auth-method', 'phone', 'verify', 'type', 'profile'].indexOf(step)
-                    ? 'bg-green-500'
-                    : 'bg-gray-300'
-                }`}
-              />
-            ))}
+          <div className="flex items-center space-x-1.5">
+            {['auth-method', 'phone', 'verify', 'type', 'profile'].map((stepName, index) => {
+              const stepIndex = ['auth-method', 'phone', 'verify', 'type', 'profile'].indexOf(step)
+              const isActive = step === stepName
+              const isCompleted = index < stepIndex
+              
+              return (
+                <React.Fragment key={stepName}>
+                  <div className="relative">
+                    {/* 활성화된 단계에 대한 글로우 효과 */}
+                    {isActive && (
+                      <motion.div
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1.5, opacity: 0.3 }}
+                        exit={{ scale: 0, opacity: 0 }}
+                        transition={{ duration: 0.4 }}
+                        className="absolute inset-0 bg-[#fb8678] rounded-full blur-md"
+                      />
+                    )}
+                    
+                    <motion.div
+                      initial={false}
+                      animate={{
+                        scale: isActive ? 1.3 : 1,
+                        backgroundColor: isActive 
+                          ? '#fb8678' 
+                          : isCompleted 
+                          ? '#fb8678' 
+                          : '#e5e7eb'
+                      }}
+                      transition={{ 
+                        duration: 0.4,
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 25
+                      }}
+                      className={`relative w-3 h-3 rounded-full flex items-center justify-center transition-all ${
+                        isActive ? 'shadow-lg shadow-[#fb8678]/50' : ''
+                      }`}
+                    >
+                      {isCompleted && (
+                        <motion.svg
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: 0.15, type: "spring", stiffness: 400 }}
+                          className="w-2 h-2 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={3}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </motion.svg>
+                      )}
+                    </motion.div>
+                  </div>
+                  
+                  {/* 단계 간 연결선 */}
+                  {index < ['auth-method', 'phone', 'verify', 'type', 'profile'].length - 1 && (
+                    <div className="relative w-8 h-0.5 mx-1">
+                      <div className="absolute inset-0 bg-gray-200 rounded-full"></div>
+                      <motion.div
+                        initial={{ scaleX: 0 }}
+                        animate={{
+                          scaleX: isCompleted || (index === stepIndex - 1) ? 1 : 0
+                        }}
+                        transition={{ duration: 0.4, delay: 0.2 }}
+                        className="absolute inset-0 bg-gradient-to-r from-[#fb8678] to-[#e67567] rounded-full origin-left"
+                      />
+                    </div>
+                  )}
+                </React.Fragment>
+              )
+            })}
           </div>
         </div>
 
 
 
         {/* 메인 컨텐츠 */}
-        <div
-          key={step}
-          className="max-w-md mx-auto"
-        >
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={step}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="max-w-md mx-auto"
+          >
           {/* 사용자 타입 선택 */}
           {step === 'type' && (
             <motion.div 
@@ -1716,7 +1880,8 @@ const SignUp = () => {
               </button>
             </div>
           )}
-        </div>
+          </motion.div>
+        </AnimatePresence>
 
         {/* 에러 메시지 */}
         {error && (

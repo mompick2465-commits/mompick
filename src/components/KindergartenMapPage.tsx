@@ -442,6 +442,9 @@ const KindergartenMapPage: React.FC = () => {
 
   // 카카오맵 API 로드
   useEffect(() => {
+    let retryCount = 0
+    const maxRetries = 3
+    
     const loadKakaoMap = () => {
       // 이미 로드된 경우 스킵
       if (window.kakao && window.kakao.maps) {
@@ -517,13 +520,12 @@ const KindergartenMapPage: React.FC = () => {
       script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${kakaoKey}&autoload=false`
       script.async = true
       
-      // 안드로이드에서는 crossOrigin 설정하지 않음
-      if (!isAndroid) {
-        script.crossOrigin = 'anonymous'
-      }
+      // iOS/Capacitor에서는 crossOrigin 설정하지 않음 (카카오맵 호환성 문제)
+      // crossOrigin 설정은 웹 브라우저에서만 필요하며, 네이티브 앱에서는 문제를 일으킬 수 있음
       
-      script.onerror = (error) => {
-        console.error('카카오 맵 스크립트 로드 실패:', error)
+      const handleScriptError = (error: any) => {
+        retryCount++
+        console.error(`카카오 맵 스크립트 로드 실패 (시도 ${retryCount}/${maxRetries}):`, error)
         console.error('사용된 키:', kakaoKey)
         console.error('플랫폼:', isAndroid ? 'Android' : 'Web')
         console.error('User Agent:', navigator.userAgent)
@@ -538,12 +540,28 @@ const KindergartenMapPage: React.FC = () => {
           console.error('에러 메시지:', String(error))
         }
         
-        console.error('에러 상세:', error)
-        const errorMsg = isAndroid 
-          ? '카카오맵을 로드할 수 없습니다.\n앱을 다시 빌드하고 실행해주세요.\n네트워크 연결을 확인해주세요.'
-          : '카카오맵을 로드할 수 없습니다.\n네트워크 연결과 API 키를 확인해주세요.'
-        alert(errorMsg)
+        // 재시도 로직
+        if (retryCount < maxRetries) {
+          console.log(`${2000 * retryCount}ms 후 재시도...`)
+          setTimeout(() => {
+            // 기존 스크립트 제거
+            const existingScript = document.querySelector('script[src*="dapi.kakao.com"]')
+            if (existingScript) {
+              existingScript.remove()
+            }
+            // 재시도
+            loadKakaoMap()
+          }, 2000 * retryCount)
+        } else {
+          console.error('카카오맵 스크립트 로드 최종 실패')
+          const errorMsg = isAndroid 
+            ? '카카오맵을 로드할 수 없습니다.\n앱을 다시 빌드하고 실행해주세요.\n네트워크 연결을 확인해주세요.'
+            : '카카오맵을 로드할 수 없습니다.\n네트워크 연결과 API 키를 확인해주세요.\n카카오 개발자 콘솔에서 플랫폼 설정을 확인해주세요.'
+          alert(errorMsg)
+        }
       }
+      
+      script.onerror = handleScriptError
       
       script.onload = () => {
         console.log('카카오 맵 스크립트 로드 성공')
@@ -1322,13 +1340,16 @@ const KindergartenMapPage: React.FC = () => {
           
           switch(error.code) {
             case error.PERMISSION_DENIED:
-              errorMessage = '위치 접근 권한이 거부되었습니다.'
+              errorMessage = '위치 접근 권한이 거부되었습니다.\n설정에서 위치 권한을 허용해주세요.'
+              console.error('위치 권한 거부됨')
               break
             case error.POSITION_UNAVAILABLE:
-              errorMessage = '위치 정보를 사용할 수 없습니다.'
+              errorMessage = '위치 정보를 사용할 수 없습니다.\nGPS를 켜고 다시 시도해주세요.'
+              console.error('위치 정보 사용 불가')
               break
             case error.TIMEOUT:
-              errorMessage = '위치 요청 시간이 초과되었습니다.'
+              errorMessage = '위치 요청 시간이 초과되었습니다.\n네트워크 연결을 확인하고 다시 시도해주세요.'
+              console.error('위치 요청 타임아웃')
               break
           }
           
@@ -1555,8 +1576,8 @@ const KindergartenMapPage: React.FC = () => {
           
           const kindergartenData: KindergartenMapData[] = data.kinderInfo
             .filter((item: any) => {
-              const itemLat = parseFloat(item.lttdcdnt)
-              const itemLng = parseFloat(item.lngtcdnt)
+              const itemLat = safeParseFloat(item.lttdcdnt)
+              const itemLng = safeParseFloat(item.lngtcdnt)
               const isValid = isValidCoordinate(itemLat, itemLng)
               if (!isValid) {
                 console.warn(`❌ 유효하지 않은 좌표: ${item.kindername} - lat: ${itemLat}, lng: ${itemLng}`)
@@ -1564,8 +1585,8 @@ const KindergartenMapPage: React.FC = () => {
               return isValid
             })
             .map((item: any): KindergartenMapData => {
-              const itemLat = parseFloat(item.lttdcdnt)
-              const itemLng = parseFloat(item.lngtcdnt)
+              const itemLat = safeParseFloat(item.lttdcdnt)
+              const itemLng = safeParseFloat(item.lngtcdnt)
               
               // 거리 계산 디버깅
               const calculatedDistance = calculateDistance(lat, lng, itemLat, itemLng)
@@ -2464,7 +2485,21 @@ const KindergartenMapPage: React.FC = () => {
 
   // 위도/경도 유효성 검사
   const isValidCoordinate = (lat: number, lng: number) => {
-    return !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0
+    // NaN 체크 및 유효한 범위 체크 (한국 좌표 범위)
+    return !isNaN(lat) && !isNaN(lng) && 
+           isFinite(lat) && isFinite(lng) &&
+           lat !== 0 && lng !== 0 &&
+           lat >= 33 && lat <= 43 && // 한국 위도 범위
+           lng >= 124 && lng <= 132  // 한국 경도 범위
+  }
+  
+  // 안전한 좌표 파싱 함수
+  const safeParseFloat = (value: any, defaultValue: number = 0): number => {
+    if (value === null || value === undefined || value === '') {
+      return defaultValue
+    }
+    const parsed = parseFloat(String(value))
+    return isNaN(parsed) || !isFinite(parsed) ? defaultValue : parsed
   }
 
   // 현재 지도 화면(뷰포트)에 해당하는 시설만 마킹
@@ -3498,19 +3533,21 @@ const KindergartenMapPage: React.FC = () => {
       {/* 통합 헤더 - 컴팩트 */}
       <div className="bg-gradient-to-r from-[#fb8678]/10 to-[#e67567]/10 border-b border-[#fb8678]/20">
         {/* 상단 헤더 */}
-        <div className="px-3 py-2 flex items-center justify-between">
-          <button
-            onClick={() => navigate('/main')}
-            className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4 text-gray-700" />
-          </button>
-          <h1 className="text-base font-bold text-gray-900">{getHeaderTitle()}</h1>
-          <div className="w-6"></div>
+        <div className="h-[60px] flex items-center">
+          <div className="px-3 w-full flex items-center justify-between">
+            <button
+              onClick={() => navigate('/main')}
+              className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4 text-gray-700" />
+            </button>
+            <h1 className="text-base font-bold text-gray-900">{getHeaderTitle()}</h1>
+            <div className="w-6"></div>
+          </div>
         </div>
 
         {/* 검색 및 필터 영역 - 컴팩트 */}
-        <div ref={searchAreaRef} className="px-3 pb-2">
+        <div ref={searchAreaRef} className="px-3">
           {/* 검색바 */}
           <div className="relative mb-2">
             <div className="flex items-center bg-white rounded-lg border border-[#fb8678]/20 p-2 shadow-sm">
@@ -3537,31 +3574,7 @@ const KindergartenMapPage: React.FC = () => {
           </div>
 
           {/* 필터 버튼들 - 컴팩트 */}
-          <div ref={filterAreaRef} className="flex items-center justify-between">
-            {/* 정렬 필터 - 왼쪽으로 이동 */}
-            <div className="flex space-x-1.5">
-              <button
-                onClick={() => setSortBy('distance')}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                  sortBy === 'distance'
-                    ? 'bg-[#fb8678] text-white shadow-sm'
-                    : 'bg-white text-gray-600 border border-[#fb8678]/20 hover:bg-[#fb8678]/5'
-                }`}
-              >
-                거리순
-              </button>
-              <button
-                onClick={() => setSortBy('rating')}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
-                  sortBy === 'rating'
-                    ? 'bg-[#fb8678] text-white shadow-sm'
-                    : 'bg-white text-gray-600 border border-[#fb8678]/20 hover:bg-[#fb8678]/5'
-                }`}
-              >
-                칭찬순
-              </button>
-            </div>
-
+          <div ref={filterAreaRef} className="flex items-center justify-end">
             {/* 타입 필터 - URL에 특정 타입이 없을 때만 표시 */}
             {!urlType && (
               <div className="flex space-x-1.5">
@@ -3684,9 +3697,33 @@ const KindergartenMapPage: React.FC = () => {
             <div className="w-12 h-1 bg-gray-300 rounded-full"></div>
           </div>
           
-          {/* 헤더 */}
-          <div className="px-4 pb-2">
-            <div className="flex items-center justify-center">
+          {/* 정렬 필터 및 검색 결과 헤더 */}
+          <div className="px-4 pt-2 pb-2">
+            <div className="flex items-center justify-between">
+              {/* 정렬 필터 - 왼쪽 */}
+              <div className="flex space-x-1.5">
+                <button
+                  onClick={() => setSortBy('distance')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                    sortBy === 'distance'
+                      ? 'bg-[#fb8678] text-white shadow-sm'
+                      : 'bg-white text-gray-600 border border-[#fb8678]/20 hover:bg-[#fb8678]/5'
+                  }`}
+                >
+                  거리순
+                </button>
+                <button
+                  onClick={() => setSortBy('rating')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                    sortBy === 'rating'
+                      ? 'bg-[#fb8678] text-white shadow-sm'
+                      : 'bg-white text-gray-600 border border-[#fb8678]/20 hover:bg-[#fb8678]/5'
+                  }`}
+                >
+                  칭찬순
+                </button>
+              </div>
+              {/* 검색 결과 텍스트 - 오른쪽 */}
               <h3 className="font-semibold text-gray-900">
                 검색 결과 ({filteredKindergartens.length}개)
               </h3>

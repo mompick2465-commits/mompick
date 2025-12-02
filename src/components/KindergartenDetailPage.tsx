@@ -515,6 +515,31 @@ const KindergartenDetailPage: React.FC = () => {
     }
   }
 
+  // 무한 스크롤을 위한 Intersection Observer
+  useEffect(() => {
+    if (!hasMoreReviews || reviewsLoading || !kindercode) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreReviews && !reviewsLoading) {
+          loadReviews(currentPage + 1, true)
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const sentinel = document.getElementById('reviews-sentinel')
+    if (sentinel) {
+      observer.observe(sentinel)
+    }
+
+    return () => {
+      if (sentinel) {
+        observer.unobserve(sentinel)
+      }
+    }
+  }, [hasMoreReviews, reviewsLoading, currentPage, kindercode])
+
   const getStatusColor = (status?: string) => {
     switch (status) {
       case '적합': return 'text-green-600 bg-green-50'
@@ -1133,12 +1158,12 @@ const KindergartenDetailPage: React.FC = () => {
       {/* 통합 헤더 + 탭 네비게이션 */}
       <div className="bg-white shadow-sm border-b border-gray-200">
         {/* 헤더 부분 */}
-        <div className="px-4 py-3 flex items-center justify-between">
+        <div className="px-4 py-4 flex items-center justify-between">
           <button
             onClick={() => navigate(`/kindergarten-map?type=kindergarten&selected=${kindercode}`)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
           >
-            <ChevronLeft className="w-5 h-5 text-gray-700" />
+            <ChevronLeft className="w-4 h-4 text-gray-700" />
           </button>
           <h1 className="text-lg font-semibold text-gray-900 truncate flex-1 mx-3">
             {kindergarten.name}
@@ -2391,24 +2416,22 @@ const KindergartenDetailPage: React.FC = () => {
               )}
             </div>
 
-            {/* 더보기 버튼 */}
-            {hasMoreReviews && (
-              <div className="px-4 py-4 text-center">
-                <button 
-                  onClick={loadMoreReviews}
-                  disabled={reviewsLoading}
-                  className="w-full py-3 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                  {reviewsLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
-                      로딩 중...
-                    </>
-                  ) : (
-                    '칭찬 더보기'
-                  )}
-                </button>
-              </div>
+            {/* 무한 스크롤 Sentinel 및 로딩 인디케이터 */}
+            {!reviewsLoading && reviews.length > 0 && (
+              <>
+                <div id="reviews-sentinel" className="h-1" />
+                {reviewsLoading && hasMoreReviews && (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#fb8678] mx-auto mb-2"></div>
+                    <p className="text-gray-500 text-xs">칭찬을 불러오는 중...</p>
+                  </div>
+                )}
+                {!hasMoreReviews && reviews.length >= 10 && (
+                  <div className="text-center py-4">
+                    <p className="text-gray-500 text-xs">모든 칭찬을 불러왔습니다.</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -2687,7 +2710,7 @@ const KindergartenDetailPage: React.FC = () => {
     )}
 
       {/* 하단 고정 버튼 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 h-20 flex items-center p-3">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-white/50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1),0_-2px_4px_-1px_rgba(0,0,0,0.06)] h-[70px] flex items-center py-2 px-3">
         <div className="flex space-x-3 w-full">
           <button onClick={() => setShowShareSheet(true)} className="p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
             <Share2 className="w-5 h-5" />
@@ -2764,7 +2787,7 @@ const KindergartenDetailPage: React.FC = () => {
       </div>
 
       {/* 하단 여백 (고정 버튼 공간) */}
-      <div className="h-20"></div>
+      <div className="h-[70px]"></div>
 
       {/* 사진 갤러리 전체 화면 */}
       {showPhotoGallery && (

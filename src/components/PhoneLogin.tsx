@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Phone, MessageCircle, ArrowLeft } from 'lucide-react'
+import { Phone, MessageCircle, CheckCircle, Loader2, Heart } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 // 전화번호를 E.164 형식으로 변환하는 함수
@@ -56,7 +56,7 @@ const PhoneLogin = () => {
   const [info, setInfo] = useState('')
   
   // 전화번호 인증 관련 상태
-  const [phoneStep, setPhoneStep] = useState<'input' | 'verify'>('input')
+  const [phoneStep, setPhoneStep] = useState<'input' | 'verify' | 'success'>('input')
   const [phoneNumber, setPhoneNumber] = useState('')
   const [verificationCode, setVerificationCode] = useState('')
   const [countdown, setCountdown] = useState(0)
@@ -188,10 +188,17 @@ const PhoneLogin = () => {
         }
         
         if (profileData && profileData.auth_user_id) {
-          // 프로필이 존재하는 경우 FCM 초기화 후 메인 페이지로 이동
+          // 프로필이 존재하는 경우 성공 화면 표시 후 메인 페이지로 이동
+          setPhoneStep('success')
+          
+          // FCM 초기화
           const { initializeFCM } = await import('../utils/fcm')
           await initializeFCM()
-          navigate('/main')
+          
+          // 2.5초 후 메인 페이지로 이동
+          setTimeout(() => {
+            navigate('/main')
+          }, 2500)
         } else {
           // 프로필이 존재하지 않는 경우 회원가입 페이지로 이동
           navigate('/signup?step=profile&phone=success')
@@ -259,6 +266,91 @@ const PhoneLogin = () => {
     navigate('/login')
   }
 
+  // 로그인 성공 화면 표시
+  if (phoneStep === 'success') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-white via-orange-50/30 to-pink-50/30 flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="text-center max-w-md w-full"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, type: "spring" }}
+            className="text-center"
+          >
+            <div className="relative inline-block mb-8">
+              {/* 원형 배경 그라데이션 */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[#fb8678] to-[#e67567] rounded-full blur-xl opacity-30 animate-pulse"></div>
+              
+              {/* 하트 컨테이너 */}
+              <div className="relative w-32 h-32 flex items-center justify-center">
+                {/* 빈 하트 (배경) */}
+                <Heart className="absolute w-24 h-24 text-gray-300" strokeWidth={2} fill="none" />
+                
+                {/* 채워지는 하트 - 클리핑으로 구현 */}
+                <div className="absolute w-24 h-24 overflow-hidden">
+                  <motion.div
+                    className="w-full h-full flex items-center justify-center"
+                    initial={{ clipPath: 'inset(100% 0 0 0)' }}
+                    animate={{ clipPath: 'inset(0% 0 0 0)' }}
+                    transition={{ 
+                      duration: 1.2,
+                      ease: [0.4, 0, 0.2, 1],
+                      delay: 0.2
+                    }}
+                  >
+                    <Heart className="w-24 h-24 text-[#fb8678] fill-[#fb8678]" strokeWidth={2} />
+                  </motion.div>
+                </div>
+                
+                {/* 게이지 바 (하트 아래) */}
+                <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-40 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-[#fb8678] to-[#e67567] rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{ 
+                      duration: 1.2,
+                      ease: [0.4, 0, 0.2, 1],
+                      delay: 0.2
+                    }}
+                  />
+                </div>
+              </div>
+              
+              {/* 펄스 효과 */}
+              <motion.div
+                className="absolute inset-0 bg-[#fb8678] rounded-full opacity-20"
+                animate={{ 
+                  scale: [1, 1.3, 1],
+                  opacity: [0.2, 0, 0.2]
+                }}
+                transition={{ 
+                  duration: 2,
+                  repeat: Infinity,
+                  delay: 0.5
+                }}
+              />
+            </div>
+            
+            <motion.h2
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.4 }}
+              className="text-2xl font-bold text-gray-900"
+            >
+              로그인 완료!
+            </motion.h2>
+          </motion.div>
+        </motion.div>
+      </div>
+    )
+  }
+
   return (
     <motion.div 
       className="h-screen bg-white overflow-hidden"
@@ -270,10 +362,10 @@ const PhoneLogin = () => {
             onClick={handleBack}
             className="p-2 rounded-full bg-transparent transition-colors hover:bg-gray-100"
           >
-            <ArrowLeft className="w-5 h-5 text-gray-600" />
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-600"><path d="m15 18-6-6 6-6"></path></svg>
           </button>
           <div className="flex-1 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">전화번호 로그인</h1>
+            <h1 className="text-xl font-bold text-gray-900">전화번호 로그인</h1>
           </div>
           <div className="w-10"></div>
         </div>

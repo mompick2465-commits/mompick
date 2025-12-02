@@ -31,7 +31,7 @@ export interface UserProfile {
   phone?: string
   user_type: 'parent' | 'teacher'
   full_name: string
-  auth_method: 'kakao' | 'google' | 'phone'
+  auth_method: 'kakao' | 'google' | 'apple' | 'phone'
   nickname?: string
   profile_image_url?: string
   children_info?: Array<{

@@ -409,9 +409,11 @@ export default function UsersPage() {
                           ? 'bg-yellow-100 text-yellow-800' 
                           : user.auth_method === 'google'
                           ? 'bg-red-100 text-red-800'
+                          : user.auth_method === 'apple'
+                          ? 'bg-black text-white'
                           : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {user.auth_method === 'kakao' ? '카카오' : user.auth_method === 'google' ? '구글' : '전화'}
+                        {user.auth_method === 'kakao' ? '카카오' : user.auth_method === 'google' ? '구글' : user.auth_method === 'apple' ? '애플' : '전화'}
                       </span>
                     </td>
                     <td className="py-2 px-3">
@@ -801,7 +803,13 @@ export default function UsersPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-gray-600">인증 방법</p>
-                  <p className="text-xs font-medium">{selectedUser.auth_method || '-'}</p>
+                  <p className="text-xs font-medium">
+                    {selectedUser.auth_method === 'kakao' ? '카카오' : 
+                     selectedUser.auth_method === 'google' ? '구글' : 
+                     selectedUser.auth_method === 'apple' ? '애플' : 
+                     selectedUser.auth_method === 'phone' ? '전화' : 
+                     selectedUser.auth_method || '-'}
+                  </p>
                 </div>
               </div>
 

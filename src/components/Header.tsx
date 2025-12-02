@@ -259,7 +259,7 @@ const Header = () => {
                 setCurrentPage('home')
                 navigate('/main')
               }}
-              className={`flex items-center justify-center w-10 h-10 rounded-2xl transition-all duration-200 ${
+              className={`flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
                 currentPage === 'home'
                   ? 'bg-gradient-to-br from-[#fb8678] to-[#e67567] text-white border-2 border-[#fb8678] shadow-lg shadow-[#fb8678]/50 scale-110'
                   : 'text-gray-600 hover:text-[#fb8678] hover:bg-[#fb8678]/10 hover:scale-105'
@@ -277,7 +277,7 @@ const Header = () => {
                 setCurrentPage('apply')
                 navigate('/application')
               }}
-              className={`flex items-center justify-center w-10 h-10 rounded-2xl transition-all duration-200 ${
+              className={`flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
                 currentPage === 'apply'
                   ? 'bg-gradient-to-br from-[#fb8678] to-[#e67567] text-white border-2 border-[#fb8678] shadow-lg shadow-[#fb8678]/50 scale-110'
                   : 'text-gray-600 hover:text-[#fb8678] hover:bg-[#fb8678]/10 hover:scale-105'
@@ -325,7 +325,7 @@ const Header = () => {
                 console.log('최종 이동할 카테고리:', categoryToNavigate)
                 navigate(`/main?category=${encodeURIComponent(categoryToNavigate)}`)
               }}
-              className={`flex items-center justify-center w-10 h-10 rounded-2xl transition-all duration-200 ${
+              className={`flex items-center justify-center w-10 h-10 rounded-full transition-all duration-200 ${
                 currentPage === 'community'
                   ? 'bg-gradient-to-br from-[#fb8678] to-[#e67567] text-white border-2 border-[#fb8678] shadow-lg shadow-[#fb8678]/50 scale-110'
                   : 'text-gray-600 hover:text-[#fb8678] hover:bg-[#fb8678]/10 hover:scale-105'

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { getUnreadNotificationCount } from '../utils/notifications'
 
@@ -25,17 +25,17 @@ interface NotificationProviderProps {
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [currentUser, setCurrentUser] = useState<any>(null)
-  const [isLoading, setIsLoading] = useState<boolean>(false)
-  const [hasInitialized, setHasInitialized] = useState<boolean>(false)
+  const isLoadingRef = useRef<boolean>(false)
+  const hasInitializedRef = useRef<boolean>(false)
 
-  // 현재 사용자 정보 가져오기
-  const getCurrentUser = async () => {
-    if (isLoading) {
+  // 현재 사용자 정보 가져오기 (useCallback으로 메모이제이션)
+  const getCurrentUser = useCallback(async () => {
+    if (isLoadingRef.current) {
       console.log('🔍 NotificationContext - 이미 로딩 중이므로 중복 호출 방지')
       return
     }
 
-    setIsLoading(true)
+    isLoadingRef.current = true
     
     try {
       console.log('🔍 NotificationContext - 사용자 정보 조회 시작')
@@ -88,19 +88,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       console.error('사용자 정보 조회 오류:', error)
       setCurrentUser(null)
     } finally {
-      setIsLoading(false)
+      isLoadingRef.current = false
     }
-  }
+  }, [])
 
   // 초기 사용자 정보 로드 (한 번만 실행)
   useEffect(() => {
-    if (!hasInitialized) {
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true
       getCurrentUser()
-      setHasInitialized(true)
     }
-  }, [hasInitialized])
+  }, [getCurrentUser])
 
-  // Supabase 인증 상태 변경 감지 (SIGNED_OUT만 처리)
+  // Supabase 인증 상태 변경 감지
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('🔍 NotificationContext - 인증 상태 변경:', event, session?.user?.id)
@@ -108,17 +108,23 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       if (event === 'SIGNED_OUT') {
         setCurrentUser(null)
         setUnreadCount(0)
-        setHasInitialized(false) // 재초기화 허용
+        hasInitializedRef.current = false // 재초기화 허용
+        isLoadingRef.current = false
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        // 로그인 또는 토큰 갱신 시 사용자 정보 다시 가져오기 (중복 방지)
+        if (!isLoadingRef.current) {
+          getCurrentUser()
+        }
       }
     })
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [getCurrentUser])
 
-  // 알림 개수 새로고침
-  const refreshUnreadCount = async () => {
+  // 알림 개수 새로고침 (useCallback으로 메모이제이션)
+  const refreshUnreadCount = useCallback(async () => {
     if (!currentUser) {
       console.log('🔍 refreshUnreadCount - currentUser가 없음')
       return
@@ -135,7 +141,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     } catch (error) {
       console.error('알림 개수 조회 오류:', error)
     }
-  }
+  }, [currentUser])
 
   // 초기 알림 개수 로드 및 주기적 업데이트
   useEffect(() => {
@@ -187,7 +193,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     return () => {
       subscription.unsubscribe()
     }
-  }, [currentUser?.id]) // currentUser.id만 의존성으로 설정
+  }, [currentUser?.id, refreshUnreadCount]) // refreshUnreadCount도 의존성에 추가
 
   const value: NotificationContextType = {
     unreadCount,

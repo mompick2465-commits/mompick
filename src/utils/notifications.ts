@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { sendPushNotification } from './sendPushNotification'
+import { canReceiveNotification } from './notificationSettings'
 
 // 알림 생성 함수 (새로운 스키마 사용)
 export const createNotification = async (
@@ -160,6 +161,23 @@ export const createNotification = async (
 
     console.log('알림 생성 성공:', data)
 
+    // 알림 타입을 FCM 알림 타입으로 매핑
+    const fcmNotificationType = type === 'like' ? 'like' : 
+                                 type === 'comment' ? 'comment' : 
+                                 type === 'reply' ? 'reply' : 
+                                 type === 'review_like' ? 'review_like' : 
+                                 'notice'
+
+    // 사용자 알림 설정 확인 (공지사항은 항상 전송)
+    if (fcmNotificationType !== 'notice') {
+      const canReceive = await canReceiveNotification(targetProfileId, fcmNotificationType)
+      if (!canReceive) {
+        console.log(`사용자가 ${fcmNotificationType} 알림을 받지 않도록 설정했습니다. FCM 전송을 건너뜁니다.`)
+        // 알림은 DB에 저장되지만 FCM은 전송하지 않음
+        return data
+      }
+    }
+
     // FCM 푸시 알림 전송 (비동기, 실패해도 알림은 생성됨)
     const notificationTitle = getNotificationTitle(type, fromUserName)
     const notificationBody = getNotificationBody(type, fromUserName, notificationData.payload)
@@ -170,7 +188,7 @@ export const createNotification = async (
       notificationBody,
       {
         notificationId: data.id,
-        type: type,
+        type: fcmNotificationType,
         postId: postId,
         ...(commentId && { commentId: commentId })
       }

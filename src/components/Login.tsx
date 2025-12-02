@@ -79,31 +79,6 @@ const Login = () => {
     <motion.div 
       className="h-screen bg-white flex items-center justify-center overflow-hidden relative"
     >
-      {/* 장식적인 배경 요소들 */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* 상단 왼쪽 장식 원 */}
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 0.1 }}
-          transition={{ duration: 1, delay: 0.2 }}
-          className="absolute -top-20 -left-20 w-64 h-64 bg-[#fb8678] rounded-full blur-3xl"
-        />
-        {/* 하단 오른쪽 장식 원 */}
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 0.1 }}
-          transition={{ duration: 1, delay: 0.4 }}
-          className="absolute -bottom-20 -right-20 w-64 h-64 bg-[#FEE500] rounded-full blur-3xl"
-        />
-        {/* 중앙 왼쪽 작은 원 */}
-        <motion.div
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{ scale: 1, opacity: 0.08 }}
-          transition={{ duration: 1, delay: 0.6 }}
-          className="absolute top-1/3 left-10 w-32 h-32 bg-[#fb8678] rounded-full blur-2xl"
-        />
-      </div>
-
       <div className="w-full max-w-md px-4 relative z-10">
         {/* 헤더 */}
         <motion.div 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Edit, Camera, Save, X, Trash2, Grid, BookOpen, User, Heart, MessageCircle, MapPin, Star } from 'lucide-react'
+import { ChevronLeft, Edit, Camera, Save, X, Trash2, Grid, BookOpen, User, Heart, MessageCircle, MapPin, Star } from 'lucide-react'
 import { supabase, uploadProfileImage, deleteProfileImage } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { listFavorites, removeFavorite, FavoriteTargetType } from '../utils/favorites'
@@ -15,7 +15,7 @@ interface UserProfile {
   phone?: string
   user_type: 'parent' | 'teacher'
   full_name: string
-  auth_method: 'kakao' | 'google' | 'phone'
+  auth_method: 'kakao' | 'google' | 'apple' | 'phone'
   nickname?: string
   profile_image_url?: string
   children_info?: Array<{
@@ -434,11 +434,13 @@ const Profile = () => {
          }
          
          // provider를 유효한 auth_method 타입으로 변환
-         let authMethod: 'kakao' | 'google' | 'phone' = 'phone'
+         let authMethod: 'kakao' | 'google' | 'apple' | 'phone' = 'phone'
          if (provider === 'kakao') {
            authMethod = 'kakao'
          } else if (provider === 'google') {
            authMethod = 'google'
+         } else if (provider === 'apple') {
+           authMethod = 'apple'
          }
          
          const basicProfile: UserProfile = {
@@ -806,6 +808,10 @@ const Profile = () => {
     })
   }
 
+  const handleContact = () => {
+    navigate('/contact/list')
+  }
+
   const handleLogout = async () => {
     try {
       // 커뮤니티 카테고리 정보 초기화
@@ -916,7 +922,7 @@ const Profile = () => {
   return (
     <div className="min-h-screen bg-white">
       {/* 헤더 */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 shadow-lg sticky top-0 z-10">
         <div className="px-4 py-4">
           <div className="flex items-center justify-between">
             <button
@@ -927,11 +933,11 @@ const Profile = () => {
                   navigate('/main')
                 }
               }}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ChevronLeft className="w-4 h-4 text-gray-700" />
             </button>
-            <h1 className="text-xl font-semibold text-gray-900">프로필</h1>
+            <h1 className="text-lg font-bold text-gray-900">프로필</h1>
             <div className="w-10"></div>
           </div>
         </div>
@@ -1001,7 +1007,8 @@ const Profile = () => {
                  
                  <p className="text-sm text-gray-500 min-h-[20px] flex items-center">
                    {profile.auth_method === 'kakao' ? '카카오톡' : 
-                    profile.auth_method === 'google' ? '구글' : '휴대폰'} 계정
+                    profile.auth_method === 'google' ? '구글' :
+                    profile.auth_method === 'apple' ? '애플' : '휴대폰'} 계정
                  </p>
                </div>
 
@@ -1266,10 +1273,13 @@ const Profile = () => {
                          ? 'bg-yellow-100 text-yellow-800'
                          : profile.auth_method === 'google'
                          ? 'bg-red-100 text-red-800'
+                         : profile.auth_method === 'apple'
+                         ? 'bg-black text-white'
                          : 'bg-gray-100 text-gray-800'
                      }`}>
                        {profile.auth_method === 'kakao' ? '카카오톡' : 
-                        profile.auth_method === 'google' ? '구글' : '휴대폰 번호'}
+                        profile.auth_method === 'google' ? '구글' :
+                        profile.auth_method === 'apple' ? '애플' : '휴대폰 번호'}
                      </span>
                    </div>
                 </div>
@@ -1887,31 +1897,11 @@ const Profile = () => {
              
              <div className="p-3">
                <div className="space-y-3">
-                 <div className="w-full p-3 text-left border-b border-gray-100 last:border-b-0">
-                   <div className="flex items-center justify-between">
-                     <div>
-                       <p className="text-xs font-medium text-gray-900">개인정보 처리방침</p>
-                       <p className="text-[10px] text-gray-500 mt-0.5">개인정보 수집 및 이용에 대한 안내</p>
-                     </div>
-                     <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                     </svg>
-                   </div>
-                 </div>
-                 
-                 <div className="w-full p-3 text-left border-b border-gray-100 last:border-b-0">
-                   <div className="flex items-center justify-between">
-                     <div>
-                       <p className="text-xs font-medium text-gray-900">마케팅 활용 동의서</p>
-                       <p className="text-[10px] text-gray-500 mt-0.5">마케팅 정보 수신 동의 및 철회</p>
-                     </div>
-                     <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                     </svg>
-                   </div>
-                 </div>
-                 
-                 <div className="w-full p-3 text-left border-b border-gray-100 last:border-b-0">
+                 {/* 서비스 이용약관 - 첫 번째 항목 */}
+                 <div 
+                   className="w-full p-3 text-left border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 transition-colors rounded-lg"
+                   onClick={() => window.open('https://mompick.ai.kr/terms.html', '_blank', 'noopener,noreferrer')}
+                 >
                    <div className="flex items-center justify-between">
                      <div>
                        <p className="text-xs font-medium text-gray-900">서비스 이용약관</p>
@@ -1923,16 +1913,83 @@ const Profile = () => {
                    </div>
                  </div>
                  
-                 <div className="w-full p-3 text-left">
+                 {/* 개인정보 처리방침 */}
+                 <div 
+                   className="w-full p-3 text-left border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 transition-colors rounded-lg"
+                   onClick={() => window.open('https://mompick.ai.kr/privacy.html', '_blank', 'noopener,noreferrer')}
+                 >
                    <div className="flex items-center justify-between">
                      <div>
-                       <p className="text-xs font-medium text-gray-900">위치정보 처리방침</p>
-                       <p className="text-[10px] text-gray-500 mt-0.5">위치정보 수집 및 이용에 대한 안내</p>
+                       <p className="text-xs font-medium text-gray-900">개인정보 처리방침</p>
+                       <p className="text-[10px] text-gray-500 mt-0.5">개인정보 수집 및 이용에 대한 안내</p>
                      </div>
                      <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                      </svg>
                    </div>
+                 </div>
+                 
+                 {/* 마케팅 정보 수신 및 활용 동의서 */}
+                 <div 
+                   className="w-full p-3 text-left border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 transition-colors rounded-lg"
+                   onClick={() => window.open('https://mompick.ai.kr/marketing-consent.html', '_blank', 'noopener,noreferrer')}
+                 >
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-xs font-medium text-gray-900">마케팅 정보 수신 및 활용 동의서</p>
+                       <p className="text-[10px] text-gray-500 mt-0.5">마케팅 정보 수신 동의 및 철회</p>
+                     </div>
+                     <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                     </svg>
+                   </div>
+                 </div>
+                 
+                 {/* 데이터 활용 동의서 */}
+                 <div 
+                   className="w-full p-3 text-left cursor-pointer hover:bg-gray-50 transition-colors rounded-lg"
+                   onClick={() => window.open('https://mompick.ai.kr/data-consent.html', '_blank', 'noopener,noreferrer')}
+                 >
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-xs font-medium text-gray-900">데이터 활용 동의서</p>
+                       <p className="text-[10px] text-gray-500 mt-0.5">데이터 활용 및 처리에 대한 안내</p>
+                     </div>
+                     <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                     </svg>
+                   </div>
+                 </div>
+               </div>
+             </div>
+           </motion.div>
+         )}
+
+         {/* 문의하기 섹션 */}
+         {!isEditing && !isEditingChildren && activeTab === 'info' && (
+           <motion.div
+             initial={{ opacity: 0, y: 20 }}
+             animate={{ opacity: 1, y: 0 }}
+             transition={{ delay: 0.35 }}
+             className="bg-white rounded-2xl mb-3 shadow-sm border border-blue-100 overflow-hidden"
+           >
+             {/* 작은 헤더 */}
+             <div className="bg-blue-50 px-2 py-1 text-center">
+               <div className="text-xs text-blue-600 font-semibold">문의하기</div>
+             </div>
+             
+             <div className="p-3">
+               <div className="bg-white rounded-lg p-3">
+                 <div className="text-center">
+                   <p className="text-xs text-blue-700 mb-4">
+                     궁금한 사항이나 불편한 점이 있으시면 고객센터로 문의해주세요.
+                   </p>
+                   <button
+                     onClick={handleContact}
+                     className="w-full px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-xs"
+                   >
+                     문의하기
+                   </button>
                  </div>
                </div>
              </div>

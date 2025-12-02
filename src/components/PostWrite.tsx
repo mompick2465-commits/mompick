@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, MapPin, Image, Smile, X, ChevronLeft, ChevronRight } from 'lucide-react'
+import { MapPin, Image, Smile, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface PostData {
@@ -507,18 +507,19 @@ const PostWrite = () => {
   const cuteEmojis = ['🌟', '💖', '✨', '🎉', '👍', '💯', '🌺', '🌈', '🎈', '🥰', '😍', '🤗', '💕', '💝', '🎊', '🎁']
 
   return (
-    <div className="bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
       <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 shadow-lg sticky top-0 z-10">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <div className="flex items-center">
+        <div className="px-4 py-4">
+          <div className="flex items-center justify-between">
             <button
               onClick={handleGoBack}
-              className="p-2 rounded-full hover:bg-[#fb8678]/10 transition-colors mr-3"
+              className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
             >
-              <ArrowLeft className="w-6 h-6 text-[#fb8678]" />
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-700"><path d="m15 18-6-6 6-6"></path></svg>
             </button>
             <h1 className="text-lg font-bold text-gray-900">새 게시글 작성</h1>
+            <div className="w-9"></div>
           </div>
         </div>
       </div>
@@ -722,23 +723,35 @@ const PostWrite = () => {
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="flex space-x-3 pt-6 border-t border-gray-100 mx-4">
-            <button
-              onClick={handleCancelPost}
-              disabled={isSubmitting}
-              className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium disabled:opacity-50"
-            >
-              취소
-            </button>
-            <button
-              onClick={handleSubmitPost}
-              disabled={isSubmitting}
-              className="flex-1 px-6 py-3 bg-[#fb8678] text-white rounded-xl hover:bg-[#e67567] transition-colors font-medium disabled:opacity-50"
-            >
-              {isSubmitting ? '게시 중...' : '게시하기'}
-            </button>
-          </div>
+          {/* 하단 여백 (고정 버튼 공간) */}
+          <div className="h-[70px]"></div>
+        </div>
+      </div>
+
+      {/* 하단 고정 버튼 */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-white/50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1),0_-2px_4px_-1px_rgba(0,0,0,0.06)] h-[70px] flex items-center py-2 px-3">
+        <div className="flex space-x-3 w-full max-w-md mx-auto">
+          <button
+            onClick={handleCancelPost}
+            disabled={isSubmitting}
+            className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleSubmitPost}
+            disabled={isSubmitting}
+            className="flex-1 py-3 px-4 bg-[#fb8678] text-white rounded-xl font-medium hover:bg-[#fb8678]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                게시 중...
+              </>
+            ) : (
+              '게시하기'
+            )}
+          </button>
         </div>
       </div>
 

@@ -161,13 +161,13 @@ const WriteReviewPage: React.FC = () => {
       )}
 
       {/* 헤더 */}
-      <div className="bg-white sticky top-0 z-10">
-        <div className="px-4 py-3 flex items-center justify-between">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 shadow-lg sticky top-0 z-10">
+        <div className="px-4 py-4 flex items-center justify-between">
           <button
             onClick={handleGoBack}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
           >
-            <ChevronLeft className="w-5 h-5 text-gray-700" />
+            <ChevronLeft className="w-4 h-4 text-gray-700" />
           </button>
           <h1 className="text-lg font-semibold text-gray-900">칭찬 작성</h1>
           <div className="w-9"></div> {/* 공간 맞추기 */}
@@ -178,7 +178,7 @@ const WriteReviewPage: React.FC = () => {
       <div className="space-y-6">
         {/* 별점 선택 */}
         <div className="text-center pt-4">
-          <div className="flex justify-center space-x-2">
+          <div className="flex justify-center space-x-2 pt-2">
             {[1, 2, 3, 4, 5].map((val) => (
               <button
                 key={val}
@@ -197,15 +197,15 @@ const WriteReviewPage: React.FC = () => {
             ))}
           </div>
           <label className="block text-xs font-semibold text-gray-400 mt-2">
-            별점을 선택해주세요 *
+            칭찬을 선택해주세요
           </label>
           {rating > 0 && (
-            <p className="text-sm text-gray-600 mt-3 font-medium">
-              {rating === 1 && '💗 매우 별로예요'}
-              {rating === 2 && '💗💗 별로예요'}
-              {rating === 3 && '💗💗💗 보통이에요'}
-              {rating === 4 && '💗💗💗💗 좋아요'}
-              {rating === 5 && '💗💗💗💗💗 매우 좋아요'}
+            <p className="text-sm text-[#fb8678] mt-3 font-bold">
+              {rating === 1 && '매우 별로예요'}
+              {rating === 2 && '별로예요'}
+              {rating === 3 && '보통이에요'}
+              {rating === 4 && '좋아요'}
+              {rating === 5 && '매우 좋아요'}
             </p>
           )}
         </div>
@@ -294,19 +294,19 @@ const WriteReviewPage: React.FC = () => {
       </div>
 
       {/* 하단 고정 버튼 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4">
-        <div className="flex space-x-3">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-t border-white/50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1),0_-2px_4px_-1px_rgba(0,0,0,0.06)] h-[70px] flex items-center py-2 px-3">
+        <div className="flex space-x-3 w-full">
           <button
             onClick={handleGoBack}
             disabled={isSubmitting}
-            className="flex-1 py-4 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
+            className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors disabled:opacity-50"
           >
             취소
           </button>
           <button
             onClick={handleSubmit}
             disabled={isSubmitting || rating === 0}
-            className="flex-1 py-4 px-4 bg-[#fb8678] text-white rounded-xl font-medium hover:bg-[#fb8678]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            className="flex-1 py-3 px-4 bg-[#fb8678] text-white rounded-xl font-medium hover:bg-[#fb8678]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           >
             {isSubmitting ? (
               <>
@@ -321,7 +321,7 @@ const WriteReviewPage: React.FC = () => {
       </div>
 
       {/* 하단 여백 (고정 버튼 공간) */}
-      <div className="h-24"></div>
+      <div className="h-[70px]"></div>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
-import { Heart, MessageCircle, MapPin, ArrowLeft, Share2, MoreVertical, Edit, Trash2, Flag, X, Shield } from 'lucide-react'
+import { Heart, MessageCircle, MapPin, ChevronLeft, Share2, MoreVertical, Edit, Trash2, Flag, X, Shield } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useLikeContext } from '../contexts/LikeContext'
 import { createLikeNotification, createReplyNotification } from '../utils/notifications'
@@ -52,6 +52,10 @@ const PostDetail = () => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [comments, setComments] = useState<Comment[]>([])
   const [commentLoading, setCommentLoading] = useState(false)
+  const [loadingMoreComments, setLoadingMoreComments] = useState(false)
+  const [hasMoreComments, setHasMoreComments] = useState(true)
+  const [currentCommentPage, setCurrentCommentPage] = useState(1)
+  const commentsPerPage = 20
   const [likeLoading, setLikeLoading] = useState(false)
   
   // 신고 관련 상태
@@ -184,17 +188,28 @@ const PostDetail = () => {
   const { isLiked, toggleLike, refreshLikes } = useLikeContext()
 
   // 댓글 목록 가져오기
-  const fetchComments = useCallback(async (postId: string) => {
-    if (!postId || commentLoading) return
+  const fetchComments = useCallback(async (postId: string, page: number = 1, append: boolean = false) => {
+    if (!postId || (commentLoading && !append) || (loadingMoreComments && append)) return
     
-    setCommentLoading(true)
+    if (append) {
+      setLoadingMoreComments(true)
+    } else {
+      setCommentLoading(true)
+    }
+    
     try {
-      console.log('댓글 조회 중:', postId)
+      console.log('댓글 조회 중:', postId, 'page:', page)
+      
+      // 페이지네이션 적용
+      const from = (page - 1) * commentsPerPage
+      const to = from + commentsPerPage - 1
+      
       const { data, error } = await supabase
         .from('comments')
         .select('*')
         .eq('post_id', postId)
         .order('created_at', { ascending: true })
+        .range(from, to)
 
       if (error) {
         console.error('댓글 조회 오류:', error)
@@ -202,6 +217,12 @@ const PostDetail = () => {
       }
 
       console.log('댓글 조회 결과:', data)
+      
+      // 전체 댓글 수 확인 (hasMore 판단용)
+      const { count: totalCount } = await supabase
+        .from('comments')
+        .select('*', { count: 'exact', head: true })
+        .eq('post_id', postId)
       
       // 각 댓글 작성자의 프로필 정보 가져오기
       const commentsWithChildren = await Promise.all((data || []).map(async (comment) => {
@@ -239,13 +260,23 @@ const PostDetail = () => {
         }
       }))
       
-      setComments(commentsWithChildren)
+      if (append) {
+        setComments(prev => [...prev, ...commentsWithChildren])
+      } else {
+        setComments(commentsWithChildren)
+      }
+      
+      // 더 불러올 댓글이 있는지 확인
+      const hasMore = totalCount ? (page * commentsPerPage) < totalCount : false
+      setHasMoreComments(hasMore)
+      setCurrentCommentPage(page)
     } catch (error) {
       console.error('댓글 조회 오류:', error)
     } finally {
       setCommentLoading(false)
+      setLoadingMoreComments(false)
     }
-  }, [commentLoading])
+  }, [commentLoading, loadingMoreComments, commentsPerPage])
 
   // 실제 게시글 데이터 가져오기
   useEffect(() => {
@@ -317,9 +348,36 @@ const PostDetail = () => {
   useEffect(() => {
     if (post && postId && !comments.length) {
       // 댓글이 이미 로드되어 있으면 다시 가져오지 않음
-      fetchComments(postId)
+      setCurrentCommentPage(1)
+      setHasMoreComments(true)
+      fetchComments(postId, 1, false)
     }
-  }, [post, postId, comments.length]) // comments.length 추가하여 댓글 수가 변경될 때만 실행
+  }, [post, postId, comments.length, fetchComments]) // comments.length 추가하여 댓글 수가 변경될 때만 실행
+
+  // 댓글 무한 스크롤을 위한 Intersection Observer
+  useEffect(() => {
+    if (!hasMoreComments || loadingMoreComments || !postId) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreComments && !loadingMoreComments) {
+          fetchComments(postId, currentCommentPage + 1, true)
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const sentinel = document.getElementById('comments-sentinel')
+    if (sentinel) {
+      observer.observe(sentinel)
+    }
+
+    return () => {
+      if (sentinel) {
+        observer.unobserve(sentinel)
+      }
+    }
+  }, [hasMoreComments, loadingMoreComments, currentCommentPage, postId, fetchComments])
 
   // 현재 사용자 정보 가져오기
   useEffect(() => {
@@ -822,7 +880,9 @@ const PostDetail = () => {
       
       // 댓글 목록을 다시 가져와서 계층 구조 업데이트
       setTimeout(() => {
-        fetchComments(post.id)
+        setCurrentCommentPage(1)
+        setHasMoreComments(true)
+        fetchComments(post.id, 1, false)
       }, 100)
     } catch (error) {
       console.error('답글 작성 오류:', error)
@@ -1084,18 +1144,18 @@ const PostDetail = () => {
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 flex flex-col">
       {/* Header */}
       <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 shadow-lg sticky top-0 z-10 flex-shrink-0">
-        <div className="max-w-md mx-auto px-4 py-4">
-          <div className="flex items-center">
+        <div className="px-4 py-4">
+          <div className="flex items-center justify-between">
             <button
               onClick={handleGoBack}
-              className="p-2 rounded-full hover:bg-[#fb8678]/10 transition-colors mr-3"
+              className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
             >
-              <ArrowLeft className="w-6 h-6 text-[#fb8678]" />
+              <ChevronLeft className="w-4 h-4 text-gray-700" />
             </button>
             <h1 className="text-lg font-bold text-gray-900">게시글</h1>
-            <div className="flex items-center space-x-2 ml-auto">
-              <button onClick={() => setShowShareSheet(true)} className="p-2 rounded-full hover:bg-[#fb8678]/10 transition-colors">
-                <Share2 className="w-5 h-5 text-[#fb8678]" />
+            <div className="flex items-center space-x-2">
+              <button onClick={() => setShowShareSheet(true)} className="p-1.5 hover:bg-white/50 rounded-lg transition-colors">
+                <Share2 className="w-4 h-4 text-[#fb8678]" />
               </button>
               
               {/* 점3개 메뉴 (자신이 올린 글에만 표시, 학부모만) */}
@@ -1103,9 +1163,9 @@ const PostDetail = () => {
                 <div className="relative">
                   <button
                     onClick={handleMenuToggle}
-                    className="p-2 rounded-full hover:bg-[#fb8678]/10 transition-colors"
+                    className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
                   >
-                    <MoreVertical className="w-5 h-5 text-[#fb8678]" />
+                    <MoreVertical className="w-4 h-4 text-[#fb8678]" />
                   </button>
                   
                   {/* 메뉴 드롭다운 */}
@@ -1134,10 +1194,10 @@ const PostDetail = () => {
                 <div className="relative">
                   <button
                     onClick={handleReportMenuToggle}
-                    className="p-2 rounded-full hover:bg-[#fb8678]/10 transition-colors"
+                    className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
                     title="게시글 메뉴"
                   >
-                    <MoreVertical className="w-5 h-5 text-[#fb8678]" />
+                    <MoreVertical className="w-4 h-4 text-[#fb8678]" />
                   </button>
                   
                   {/* 신고 메뉴 드롭다운 */}
@@ -2711,6 +2771,24 @@ const PostDetail = () => {
                       )}
                     </div>
                   ))}
+                  
+                  {/* 무한 스크롤 Sentinel 및 로딩 인디케이터 */}
+                  {!commentLoading && comments.length > 0 && (
+                    <>
+                      <div id="comments-sentinel" className="h-1" />
+                      {loadingMoreComments && (
+                        <div className="text-center py-4">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#fb8678] mx-auto mb-2"></div>
+                          <p className="text-gray-500 text-xs">댓글을 불러오는 중...</p>
+                        </div>
+                      )}
+                      {!hasMoreComments && comments.length >= commentsPerPage && (
+                        <div className="text-center py-4">
+                          <p className="text-gray-500 text-xs">모든 댓글을 불러왔습니다.</p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
             </div>

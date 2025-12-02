@@ -51,7 +51,7 @@ export default function SendNotificationPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       <div className="flex items-center gap-3">
         <Bell className="w-8 h-8 text-blue-500" />
         <h1 className="text-3xl font-bold">알림 보내기</h1>
@@ -70,7 +70,7 @@ export default function SendNotificationPage() {
         </div>
       </div>
 
-      <Card>
+      <Card className="border-0 shadow-none">
         <CardHeader>
           <CardTitle>알림 작성</CardTitle>
         </CardHeader>

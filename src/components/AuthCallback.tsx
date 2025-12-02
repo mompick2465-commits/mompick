@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { motion } from 'framer-motion'
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { CheckCircle, XCircle, Loader2, Heart } from 'lucide-react'
 import { Capacitor } from '@capacitor/core'
 
 const AuthCallback = () => {
@@ -45,22 +45,34 @@ const AuthCallback = () => {
           if (error) {
             console.error('OAuth 에러 발생:', error, errorDescription)
             
-            if (error === 'server_error' && errorDescription?.includes('email')) {
-              if (isMounted) {
-                setStatus('error')
-                setMessage('이메일 정보를 가져올 수 없습니다. 카카오톡 설정을 확인해주세요.')
+            // 에러 타입별 메시지 설정
+            let errorMessage = 'OAuth 인증 중 오류가 발생했습니다.'
+            let errorCode = 'oauth_error'
+            
+            if (error === 'server_error') {
+              if (errorDescription?.includes('exchange external code') || errorDescription?.includes('Unable to exchange')) {
+                // Apple OAuth 설정 문제
+                errorMessage = '애플 로그인 설정 오류입니다.'
+                errorCode = 'apple_config_error'
+              } else if (errorDescription?.includes('email')) {
+                errorMessage = '이메일 정보를 가져올 수 없습니다. 카카오톡 설정을 확인해주세요.'
+              } else {
+                errorMessage = `서버 오류가 발생했습니다: ${errorDescription || error}`
               }
-            } else {
-              if (isMounted) {
-                setStatus('error')
-                setMessage('OAuth 인증 중 오류가 발생했습니다.')
-              }
+            } else if (error === 'access_denied') {
+              errorMessage = '로그인이 취소되었습니다.'
+              errorCode = 'access_denied'
+            } else if (error === 'invalid_request') {
+              errorMessage = '잘못된 요청입니다. 다시 시도해주세요.'
             }
             
             if (isMounted) {
+              setStatus('error')
+              setMessage(errorMessage)
+              
               setTimeout(() => {
-                navigate('/signup?step=auth-method&error=oauth_error')
-              }, 2000)
+                navigate(`/signup?step=auth-method&error=${errorCode}`)
+              }, 4000) // 애플 설정 오류는 메시지를 더 길게 표시
             }
             return
           }
@@ -133,7 +145,7 @@ const AuthCallback = () => {
                 if (isMounted) {
                   navigate('/main')
                 }
-              }, 1500)
+              }, 2500)
             }
           } else {
             // 프로필이 완성되지 않은 경우 프로필 입력 단계로
@@ -150,7 +162,7 @@ const AuthCallback = () => {
                 if (isMounted) {
                   navigate('/signup?step=type&oauth=success')
                 }
-              }, 1500)
+              }, 2500)
             }
           }
         } else {
@@ -194,47 +206,179 @@ const AuthCallback = () => {
   }, [navigate])
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-white via-orange-50/30 to-pink-50/30 flex items-center justify-center p-4">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.3 }}
-        className="text-center"
+        className="text-center max-w-md w-full"
       >
         {status === 'loading' && (
-          <>
-            <Loader2 className="w-16 h-16 text-orange-500 mx-auto mb-4 animate-spin" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="text-center"
+          >
+            <div className="relative inline-block mb-6">
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-400/30 to-pink-400/30 rounded-full blur-xl animate-pulse"></div>
+              <div className="relative w-20 h-20 bg-gradient-to-br from-orange-400 to-pink-400 rounded-full flex items-center justify-center shadow-lg">
+                <Loader2 className="w-10 h-10 text-white animate-spin" />
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
               인증 처리 중...
             </h2>
-            <p className="text-gray-600">
+            <p className="text-gray-600 text-base">
               잠시만 기다려주세요
             </p>
-          </>
+          </motion.div>
         )}
 
         {status === 'success' && (
-          <>
-            <CheckCircle className="w-16 h-16 text-[#fb8678] mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, type: "spring" }}
+            className="text-center"
+          >
+            <div className="relative inline-block mb-8">
+              {/* 원형 배경 그라데이션 */}
+              <div className="absolute inset-0 bg-gradient-to-br from-[#fb8678] to-[#e67567] rounded-full blur-xl opacity-30 animate-pulse"></div>
+              
+              {/* 하트 컨테이너 */}
+              <div className="relative w-32 h-32 flex items-center justify-center">
+                {/* 빈 하트 (배경) */}
+                <Heart className="absolute w-24 h-24 text-gray-300" strokeWidth={2} fill="none" />
+                
+                {/* 채워지는 하트 - 클리핑으로 구현 */}
+                <div className="absolute w-24 h-24 overflow-hidden">
+                  <motion.div
+                    className="w-full h-full flex items-center justify-center"
+                    initial={{ clipPath: 'inset(100% 0 0 0)' }}
+                    animate={{ clipPath: 'inset(0% 0 0 0)' }}
+                    transition={{ 
+                      duration: 1.2,
+                      ease: [0.4, 0, 0.2, 1],
+                      delay: 0.2
+                    }}
+                  >
+                    <Heart className="w-24 h-24 text-[#fb8678] fill-[#fb8678]" strokeWidth={2} />
+                  </motion.div>
+                </div>
+                
+                {/* 게이지 바 (하트 아래) */}
+                <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-40 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-[#fb8678] to-[#e67567] rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{ 
+                      duration: 1.2,
+                      ease: [0.4, 0, 0.2, 1],
+                      delay: 0.2
+                    }}
+                  />
+                </div>
+              </div>
+              
+              {/* 펄스 효과 */}
+              <motion.div
+                className="absolute inset-0 bg-[#fb8678] rounded-full opacity-20"
+                animate={{ 
+                  scale: [1, 1.3, 1],
+                  opacity: [0.2, 0, 0.2]
+                }}
+                transition={{ 
+                  duration: 2,
+                  repeat: Infinity,
+                  delay: 0.5
+                }}
+              />
+            </div>
+            
+            <motion.h2
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1.4 }}
+              className="text-2xl font-bold text-gray-900"
+            >
               {message.includes('로그인되었습니다') ? '로그인 완료!' : '계정 연동 완료!'}
-            </h2>
-            <p className="text-gray-600">
-              {message}
-            </p>
-          </>
+            </motion.h2>
+          </motion.div>
         )}
 
         {status === 'error' && (
-          <>
-            <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              인증 실패
-            </h2>
-            <p className="text-gray-600">
-              {message}
-            </p>
-          </>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4, type: "spring" }}
+            className="text-center"
+          >
+            <div className="relative inline-block mb-8">
+              {/* 원형 배경 그라데이션 */}
+              <div className="absolute inset-0 bg-gradient-to-br from-red-400 to-red-600 rounded-full blur-xl opacity-30 animate-pulse"></div>
+              
+              {/* 하트 컨테이너 */}
+              <div className="relative w-32 h-32 flex items-center justify-center">
+                {/* 빈 하트 (배경) */}
+                <Heart className="absolute w-24 h-24 text-gray-300" strokeWidth={2} fill="none" />
+                
+                {/* 빨간 하트가 흰색으로 변하는 애니메이션 - 클리핑으로 구현 */}
+                <div className="absolute w-24 h-24 overflow-hidden">
+                  <motion.div
+                    className="w-full h-full flex items-center justify-center"
+                    initial={{ clipPath: 'inset(0% 0 0 0)' }}
+                    animate={{ clipPath: 'inset(100% 0 0 0)' }}
+                    transition={{ 
+                      duration: 1.2,
+                      ease: [0.4, 0, 0.2, 1],
+                      delay: 0.2
+                    }}
+                  >
+                    <Heart className="w-24 h-24 text-red-500 fill-red-500" strokeWidth={2} />
+                  </motion.div>
+                </div>
+                
+                {/* 실패 바 (하트 아래) */}
+                <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-40 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{ 
+                      duration: 0.6,
+                      ease: [0.4, 0, 0.2, 1],
+                      delay: 0.2
+                    }}
+                  />
+                </div>
+              </div>
+              
+              {/* 펄스 효과 */}
+              <motion.div
+                className="absolute inset-0 bg-red-500 rounded-full opacity-20"
+                animate={{ 
+                  scale: [1, 1.3, 1],
+                  opacity: [0.2, 0, 0.2]
+                }}
+                transition={{ 
+                  duration: 2,
+                  repeat: Infinity,
+                  delay: 0.5
+                }}
+              />
+            </div>
+            
+            <motion.h2
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.8 }}
+              className="text-2xl font-bold text-gray-900"
+            >
+              인증 실패!
+            </motion.h2>
+          </motion.div>
         )}
       </motion.div>
     </div>

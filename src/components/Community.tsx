@@ -56,6 +56,10 @@ const Community = () => {
   const [isWritingPost, setIsWritingPost] = useState<boolean>(false)
   const [posts, setPosts] = useState<CommunityPost[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMorePosts, setHasMorePosts] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const postsPerPage = 10
   const [currentUser, setCurrentUser] = useState<{ id: string; auth_user_id?: string; full_name: string; nickname: string; profile_image_url: string; user_type?: string; children_info?: Array<{ name: string; gender: string; birth_date: string; relationship: string; profile_image_url?: string }> } | null>(null)
   const [showMenu, setShowMenu] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
@@ -186,75 +190,128 @@ const Community = () => {
 
 
   // 선택된 카테고리에 따라 게시글 가져오기
-  useEffect(() => {
-    const fetchPosts = async () => {
+  const fetchPosts = useCallback(async (page: number = 1, append: boolean = false) => {
+    if (append) {
+      setLoadingMore(true)
+    } else {
       setLoading(true)
-      try {
-        const categoryTitle = popularTopics.find(t => t.id === selectedCategory)?.title || '어린이집,유치원'
-        
-        // 먼저 게시글 가져오기 (작성자 정보 포함)
-        const { data: postsData, error: postsError } = await supabase
-          .from('community_posts')
-          .select(`
-            *,
-            profiles!community_posts_author_id_fkey(
-              id,
-              auth_user_id,
-              full_name,
-              nickname,
-              profile_image_url,
-              user_type,
-              children_info
-            )
-          `)
-          .eq('category', categoryTitle)
-          .order('created_at', { ascending: false })
+    }
+    
+    try {
+      const categoryTitle = popularTopics.find(t => t.id === selectedCategory)?.title || '어린이집,유치원'
+      
+      // 페이지네이션 적용
+      const from = (page - 1) * postsPerPage
+      const to = from + postsPerPage - 1
+      
+      // 먼저 게시글 가져오기 (작성자 정보 포함)
+      const { data: postsData, error: postsError } = await supabase
+        .from('community_posts')
+        .select(`
+          *,
+          profiles!community_posts_author_id_fkey(
+            id,
+            auth_user_id,
+            full_name,
+            nickname,
+            profile_image_url,
+            user_type,
+            children_info
+          )
+        `)
+        .eq('category', categoryTitle)
+        .order('created_at', { ascending: false })
+        .range(from, to)
 
-        if (postsError) {
-          console.error('게시글 조회 오류:', postsError)
-          return
-        }
-
-        // 각 게시글의 실제 댓글 수와 좋아요 수 가져오기
-        const postsWithActualCounts = await Promise.all(
-          (postsData || []).map(async (post) => {
-            // 댓글 수
-            const { count: commentCount } = await supabase
-              .from('comments')
-              .select('*', { count: 'exact', head: true })
-              .eq('post_id', post.id)
-            
-            // 좋아요 수
-            const { count: likeCount } = await supabase
-              .from('post_likes')
-              .select('*', { count: 'exact', head: true })
-              .eq('post_id', post.id)
-            
-            // 작성자의 자녀 프로필 이미지 추출
-            const authorChildrenImages = post.profiles?.user_type === 'parent' && post.profiles?.children_info 
-              ? post.profiles.children_info.map((child: any) => child.profile_image_url || null)
-              : []
-            
-            return {
-              ...post,
-              user_id: post.profiles?.auth_user_id || post.author_id, // 작성자의 UUID 사용
-              comments_count: commentCount || 0,
-              likes_count: likeCount || 0,
-              author_children_images: authorChildrenImages
-            }
-          })
-        )
-
-        setPosts(postsWithActualCounts)
-      } catch (error) {
-        console.error('게시글 조회 오류:', error)
-      } finally {
-        setLoading(false)
+      if (postsError) {
+        console.error('게시글 조회 오류:', postsError)
+        return
       }
+
+      // 전체 게시글 수 확인 (hasMore 판단용)
+      const { count: totalCount } = await supabase
+        .from('community_posts')
+        .select('*', { count: 'exact', head: true })
+        .eq('category', categoryTitle)
+
+      // 각 게시글의 실제 댓글 수와 좋아요 수 가져오기
+      const postsWithActualCounts = await Promise.all(
+        (postsData || []).map(async (post) => {
+          // 댓글 수
+          const { count: commentCount } = await supabase
+            .from('comments')
+            .select('*', { count: 'exact', head: true })
+            .eq('post_id', post.id)
+          
+          // 좋아요 수
+          const { count: likeCount } = await supabase
+            .from('post_likes')
+            .select('*', { count: 'exact', head: true })
+            .eq('post_id', post.id)
+          
+          // 작성자의 자녀 프로필 이미지 추출
+          const authorChildrenImages = post.profiles?.user_type === 'parent' && post.profiles?.children_info 
+            ? post.profiles.children_info.map((child: any) => child.profile_image_url || null)
+            : []
+          
+          return {
+            ...post,
+            user_id: post.profiles?.auth_user_id || post.author_id, // 작성자의 UUID 사용
+            comments_count: commentCount || 0,
+            likes_count: likeCount || 0,
+            author_children_images: authorChildrenImages
+          }
+        })
+      )
+
+      if (append) {
+        setPosts(prev => [...prev, ...postsWithActualCounts])
+      } else {
+        setPosts(postsWithActualCounts)
+      }
+
+      // 더 불러올 게시글이 있는지 확인
+      const hasMore = totalCount ? (page * postsPerPage) < totalCount : false
+      setHasMorePosts(hasMore)
+      setCurrentPage(page)
+    } catch (error) {
+      console.error('게시글 조회 오류:', error)
+    } finally {
+      setLoading(false)
+      setLoadingMore(false)
+    }
+  }, [selectedCategory, popularTopics, postsPerPage])
+
+  useEffect(() => {
+    setCurrentPage(1)
+    setHasMorePosts(true)
+    fetchPosts(1, false)
+  }, [selectedCategory])
+
+  // 무한 스크롤을 위한 Intersection Observer
+  useEffect(() => {
+    if (!hasMorePosts || loadingMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMorePosts && !loadingMore) {
+          fetchPosts(currentPage + 1, true)
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const sentinel = document.getElementById('posts-sentinel')
+    if (sentinel) {
+      observer.observe(sentinel)
     }
 
-    fetchPosts()
-  }, [selectedCategory])
+    return () => {
+      if (sentinel) {
+        observer.unobserve(sentinel)
+      }
+    }
+  }, [hasMorePosts, loadingMore, currentPage, fetchPosts])
 
   // 현재 사용자 정보 가져오기
   useEffect(() => {
@@ -1151,12 +1208,12 @@ const Community = () => {
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#fb8678] mx-auto mb-4"></div>
-              <p className="text-gray-600">게시글을 불러오는 중...</p>
+              <p className="text-gray-600 text-sm">게시글을 불러오는 중...</p>
             </div>
           ) : posts.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-gray-600">아직 게시글이 없습니다.</p>
-              <p className="text-gray-500 text-sm">첫 번째 게시글을 작성해보세요!</p>
+              <p className="text-gray-600 text-sm font-medium">아직 게시글이 없습니다.</p>
+              <p className="text-gray-500 text-xs">첫 번째 게시글을 작성해보세요!</p>
             </div>
           ) : (
             posts.map((post) => (
@@ -1436,6 +1493,24 @@ const Community = () => {
                 </div>
               </div>
             ))
+          )}
+          
+          {/* 무한 스크롤 Sentinel 및 로딩 인디케이터 */}
+          {!loading && posts.length > 0 && (
+            <>
+              <div id="posts-sentinel" className="h-1" />
+              {loadingMore && (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#fb8678] mx-auto mb-2"></div>
+                  <p className="text-gray-500 text-xs">게시글을 불러오는 중...</p>
+                </div>
+              )}
+              {!hasMorePosts && posts.length >= postsPerPage && (
+                <div className="text-center py-4">
+                  <p className="text-gray-500 text-xs">모든 게시글을 불러왔습니다.</p>
+                </div>
+              )}
+            </>
           )}
         </div>
 

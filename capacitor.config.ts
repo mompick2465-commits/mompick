@@ -7,7 +7,8 @@ const config: CapacitorConfig = {
   appName: 'mompick',
   webDir: 'build',
   server: {
-    androidScheme: 'http'
+    androidScheme: 'http',
+    iosScheme: 'http'
   },
   android: {
     backgroundColor: '#ffffff',
@@ -16,6 +17,10 @@ const config: CapacitorConfig = {
     webContentsDebuggingEnabled: true, // 디버깅을 위해 활성화
     adjustMarginsForEdgeToEdge: 'auto',
     useLegacyBridge: false
+  },
+  ios: {
+    backgroundColor: '#ffffff',
+    contentInset: 'automatic'
   },
   plugins: {
     SplashScreen: {
@@ -33,9 +38,7 @@ const config: CapacitorConfig = {
       buttonColor: '#000000'
     },
     Keyboard: {
-      resizeOnFullScreen: true,
-      style: 'DEFAULT',
-      resize: 'body'
+      resizeOnFullScreen: true
     },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert']

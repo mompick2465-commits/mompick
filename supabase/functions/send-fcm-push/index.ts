@@ -186,6 +186,58 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // 알림 타입 확인 및 사용자 설정 확인
+    const notificationType = data?.type as string | undefined
+    console.log('🔍 알림 타입:', notificationType)
+
+    // 알림 설정 확인 (공지사항은 항상 허용)
+    if (notificationType && notificationType !== 'notice') {
+      const { data: settings, error: settingsError } = await supabase
+        .from('notification_settings')
+        .select('notice, post, comment, reply, review')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (settingsError) {
+        console.warn('⚠️ 알림 설정 조회 오류 (기본값 사용):', settingsError)
+      } else if (settings) {
+        // 알림 타입에 따라 설정 확인
+        let canReceive = true
+        switch (notificationType) {
+          case 'like':
+            canReceive = settings.post !== false
+            break
+          case 'comment':
+            canReceive = settings.comment !== false
+            break
+          case 'reply':
+            canReceive = settings.reply !== false
+            break
+          case 'review_like':
+            canReceive = settings.review !== false
+            break
+        }
+
+        if (!canReceive) {
+          console.log(`🚫 사용자가 ${notificationType} 알림을 받지 않도록 설정했습니다.`)
+          return new Response(
+            JSON.stringify({ 
+              message: '사용자가 해당 알림을 받지 않도록 설정했습니다.', 
+              sent: 0,
+              skipped: true 
+            }),
+            {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          )
+        }
+      }
+    }
+
     // 사용자의 FCM 토큰 조회
     console.log('🔍 FCM 토큰 조회 시작 - userId:', userId)
     const { data: tokens, error: tokenError } = await supabase

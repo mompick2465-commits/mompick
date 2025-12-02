@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Heart, MessageCircle, X, ArrowLeft, Bell, Settings } from 'lucide-react'
+import { Heart, MessageCircle, X, ChevronLeft, Bell, Settings } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { useNotification } from '../contexts/NotificationContext'
@@ -403,9 +403,9 @@ const Notifications = () => {
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => navigate(-1)}
-                className="p-2 text-gray-600 hover:text-[#fb8678] transition-colors"
+                className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ChevronLeft className="w-4 h-4 text-gray-700" />
               </button>
               <h1 className="text-lg font-bold text-gray-900">알림</h1>
             </div>
@@ -710,34 +710,10 @@ const Notifications = () => {
       {/* 공지사항 상세보기 모달 - 전체 화면 */}
       {showNoticeModal && selectedNotice && (
         <div 
-          className="fixed inset-0 bg-white z-50 flex flex-col"
+          className="fixed inset-0 bg-white z-50 flex flex-col overflow-hidden"
         >
-          {/* 헤더 */}
-          <div className="p-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowNoticeModal(false)}
-                className="p-2 text-gray-600 hover:text-[#fb8678] transition-colors"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-              <div className="w-8 h-8 bg-[#fb8678] rounded-lg flex items-center justify-center">
-                <NoticeIcon className="w-4 h-4 text-white" />
-              </div>
-              <h2 className="text-base font-bold text-gray-900">
-                {selectedNotice.payload.title || '공지사항'}
-              </h2>
-            </div>
-            <button
-              onClick={() => setShowNoticeModal(false)}
-              className="p-2 text-gray-400 hover:text-gray-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* 내용 */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* 내용 - 헤더 뒤로 스크롤되도록 먼저 배치 */}
+          <div className="flex-1 overflow-y-auto p-4 pt-20 relative z-0">
             <div 
               className="prose prose-xs max-w-none"
               style={{
@@ -750,17 +726,32 @@ const Notifications = () => {
             />
           </div>
 
-          {/* 푸터 */}
-          <div className="p-4 border-t border-gray-200 flex items-center justify-between bg-white">
-            <p className="text-xs text-gray-400">
-              {formatTime(selectedNotice.created_at)}
-            </p>
-            <button
-              onClick={() => setShowNoticeModal(false)}
-              className="px-4 py-2 bg-[#fb8678] text-white rounded-lg hover:bg-[#fb8678]/90 transition-colors text-sm"
-            >
-              닫기
-            </button>
+          {/* 헤더 - absolute로 위에 고정 */}
+          <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 shadow-lg absolute top-0 left-0 right-0 z-10">
+            <div className="px-4 py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowNoticeModal(false)}
+                    className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-gray-700" />
+                  </button>
+                  <div className="w-8 h-8 bg-[#fb8678] rounded-lg flex items-center justify-center">
+                    <NoticeIcon className="w-4 h-4 text-white" />
+                  </div>
+                  <h2 className="text-base font-bold text-gray-900">
+                    {selectedNotice.payload.title || '공지사항'}
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setShowNoticeModal(false)}
+                  className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4 text-gray-700" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
