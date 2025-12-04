@@ -9,7 +9,8 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "playgrounds:full-sync": "node scripts/playgrounds/fullSync.mjs",
-    "update-android-icon": "node scripts/update-android-icon.cjs"
+    "update-android-icon": "node scripts/update-android-icon.cjs",
+    "sync-android-env": "node scripts/sync-android-env.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",

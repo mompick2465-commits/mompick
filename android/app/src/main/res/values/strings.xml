@@ -5,6 +5,7 @@
     <string name="package_name">com.mompick.app</string>
     <string name="custom_url_scheme">com.mompick.app</string>
     
-    <!-- 카카오맵 네이티브 앱 키 (카카오 개발자 콘솔에서 발급받은 키로 교체) -->
-    <string name="kakao_map_native_key">33fa59b279a31538baceafbe0fc32325</string>
+    <!-- 카카오맵 네이티브 앱 키 (빌드 시 gradle.properties에서 자동으로 설정됨) -->
+    <!-- 하드코딩 제거: 이 값은 build.gradle에서 동적으로 설정됩니다 -->
+    <string name="kakao_map_native_key">YOUR_NATIVE_APP_KEY_HERE</string>
 </resources>

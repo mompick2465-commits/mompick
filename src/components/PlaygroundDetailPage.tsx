@@ -55,6 +55,7 @@ const PlaygroundDetailPage: React.FC = () => {
   const [detail, setDetail] = useState<PlaygroundDetailState | null>(null)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+  const [isUsingSampleData, setIsUsingSampleData] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<PlaygroundTab>('basic')
   const [showSourceInfo, setShowSourceInfo] = useState(false)
   const [isFavorite, setIsFavorite] = useState(false)
@@ -314,6 +315,17 @@ const PlaygroundDetailPage: React.FC = () => {
         }
 
         if (!matchedRaw) {
+          // raw 데이터가 없고 sessionFallback만 있는 경우 샘플 데이터로 간주
+          if (sessionFallback) {
+            if (isMounted) {
+              setDetail({
+                map: sessionFallback,
+                raw: null,
+              })
+              setIsUsingSampleData(true)
+            }
+            return
+          }
           throw new Error('선택한 놀이시설 정보를 찾지 못했습니다.')
         }
 
@@ -332,6 +344,7 @@ const PlaygroundDetailPage: React.FC = () => {
 
         if (isMounted) {
           setDetail(detailState)
+          setIsUsingSampleData(false)
 
           try {
             window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(mergedMapData))
@@ -348,8 +361,16 @@ const PlaygroundDetailPage: React.FC = () => {
         console.error('[PlaygroundDetail] 로딩 오류:', err)
         if (isMounted) {
           setError('놀이시설 정보를 불러오지 못했어요.')
-          if (!sessionFallback) {
+          if (sessionFallback) {
+            // 세션 폴백이 있으면 샘플 데이터로 표시
+            setDetail({
+              map: sessionFallback,
+              raw: null,
+            })
+            setIsUsingSampleData(true)
+          } else {
             setDetail(null)
+            setIsUsingSampleData(false)
           }
         }
       } finally {
@@ -1416,7 +1437,7 @@ const PlaygroundDetailPage: React.FC = () => {
 
 	return (
 		<>
-		<div className="min-h-screen bg-white">
+		<div className={`min-h-screen bg-white ${isUsingSampleData ? 'pointer-events-none' : ''}`}>
 			<div className="border-b border-gray-200 bg-white shadow-sm">
 				<div className="flex items-center justify-between px-4 py-4">
 					<button
@@ -2712,6 +2733,33 @@ const PlaygroundDetailPage: React.FC = () => {
 							{profileReportLoading ? '신고 중...' : '신고하기'}
 						</button>
 					</div>
+				</div>
+			</div>
+		)}
+
+		{/* 샘플 데이터 팝업 */}
+		{isUsingSampleData && (
+			<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 pointer-events-auto">
+				<div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl">
+					<div className="text-center mb-6">
+						<div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+							<AlertCircle className="w-8 h-8 text-red-500" />
+						</div>
+						<h2 className="text-lg font-semibold text-gray-900 mb-3">
+							죄송합니다. 파일을 불러오지 못했습니다.
+						</h2>
+						<p className="text-sm text-gray-600 leading-relaxed">
+							없는 시설이거나 잘못된 시설 정보 인거같습니다.
+							<br />
+							자세한건 문의하기를 통해 알려주세요.
+						</p>
+					</div>
+					<button
+						onClick={handleBack}
+						className="w-full px-4 py-3 bg-[#fb8678] text-white rounded-xl font-medium hover:bg-[#fb8678]/90 transition-colors"
+					>
+						확인
+					</button>
 				</div>
 			</div>
 		)}

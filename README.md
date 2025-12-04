@@ -55,14 +55,25 @@ npm install
 
 ```env
 # Supabase 설정
-VITE_SUPABASE_URL=your_supabase_url_here
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
+REACT_APP_SUPABASE_URL=your_supabase_url_here
+REACT_APP_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 
 # 카카오맵 API 키 (JavaScript 키 사용)
-VITE_KAKAO_MAP_KEY=your_kakao_map_js_key_here
+REACT_APP_KAKAO_MAP_KEY=your_kakao_map_js_key_here
+
+# 카카오 REST API 키 (지오코딩/역지오코딩용)
+REACT_APP_KAKAO_REST_KEY=your_kakao_rest_api_key_here
+
+# 카카오맵 네이티브 앱 키 (Android/iOS 네이티브 맵용)
+KAKAO_MAP_NATIVE_KEY=your_kakao_map_native_key_here
 
 # 유치원 정보 API 키
 REACT_APP_KINDERGARTEN_API_KEY=your_kindergarten_api_key_here
+
+# 어린이집 API 키
+REACT_APP_CHILDCARE_API_KEY=your_childcare_api_key_here
+REACT_APP_CHILDCARE_DETAIL_API_KEY=your_childcare_detail_api_key_here
+REACT_APP_CHILDCARE_SEARCH_API_KEY=your_childcare_search_api_key_here
 ```
 
 #### 카카오맵 API 키 발급 방법
@@ -72,7 +83,9 @@ REACT_APP_KINDERGARTEN_API_KEY=your_kindergarten_api_key_here
    - `https://your-domain.com` (배포용)
    - `capacitor://localhost` (앱용)
    - `http://localhost` (앱용)
-3. JavaScript 키를 복사하여 `VITE_KAKAO_MAP_KEY`에 설정
+3. **JavaScript 키**를 복사하여 `REACT_APP_KAKAO_MAP_KEY`에 설정
+4. **REST API 키**를 복사하여 `REACT_APP_KAKAO_REST_KEY`에 설정 (지오코딩용)
+5. **네이티브 앱 키**를 복사하여 `KAKAO_MAP_NATIVE_KEY`에 설정 (Android/iOS 네이티브 맵용)
 
 #### 유치원 정보 API 키 발급 방법
 1. [유치원알리미](https://e-childschoolinfo.moe.go.kr)에서 API 키 발급
@@ -93,29 +106,33 @@ Supabase 대시보드에서 OAuth 제공자를 설정해야 합니다:
 3. Client ID와 Client Secret을 Supabase 대시보드 > Authentication > Providers > Google에 입력
 
 ### 4. Supabase 설정
+
+**📚 상세한 데이터베이스 마이그레이션 가이드는 [DATABASE_MIGRATION_GUIDE.md](./DATABASE_MIGRATION_GUIDE.md) 문서를 참고하세요.**
+
 1. [Supabase](https://supabase.com)에서 새 프로젝트 생성
-2. `profiles` 테이블 생성:
+2. SQL Editor에서 마이그레이션 스크립트 실행:
+   - 초기 설정: `supabase_setup.sql` 실행
+   - 나머지 테이블 생성은 [DATABASE_MIGRATION_GUIDE.md](./DATABASE_MIGRATION_GUIDE.md)의 실행 순서를 따르세요
+
+기본 테이블 구조는 다음과 같습니다:
 
 ```sql
+-- profiles 테이블
 CREATE TABLE profiles (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   phone TEXT UNIQUE,
   user_type TEXT CHECK (user_type IN ('parent', 'teacher')) NOT NULL,
   full_name TEXT NOT NULL,
-  auth_method TEXT CHECK (auth_method IN ('kakao', 'google', 'phone')),
+  auth_method TEXT CHECK (auth_method IN ('kakao', 'google', 'phone', 'apple')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
-```
 
-3. `community_posts` 테이블 생성:
-
-```sql
+-- community_posts 테이블
 CREATE TABLE community_posts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   author_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
   author_name TEXT NOT NULL,
-  author_profile_image TEXT,
   content TEXT NOT NULL,
   location TEXT NOT NULL,
   hashtags TEXT[],
@@ -123,23 +140,6 @@ CREATE TABLE community_posts (
   emojis TEXT[],
   category TEXT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
-4. `reports` 테이블 생성 (신고 기능):
-
-```sql
-CREATE TABLE reports (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  post_id UUID REFERENCES community_posts(id) ON DELETE CASCADE,
-  reporter_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  report_reason TEXT NOT NULL,
-  report_type VARCHAR(50) NOT NULL,
-  status VARCHAR(20) DEFAULT 'pending',
-  admin_notes TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(post_id, reporter_id)
 );
 ```
 
@@ -174,6 +174,26 @@ src/
 - `/main` - 메인 애플리케이션
 - `/kindergarten-map` - 유치원/어린이집 지도 검색
 - `/kindergarten/:kindercode` - 유치원 상세 정보 페이지
+
+## 📚 종합 가이드 문서
+
+프로젝트 설정 및 운영에 필요한 종합 가이드 문서:
+
+- **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**: 모든 설정 가이드 통합 문서
+  - 환경 변수 설정
+  - 인증 시스템 설정 (카카오, 구글, 애플)
+  - Firebase 및 FCM 설정
+  - 카카오맵 설정
+  - API 통합
+  - 플랫폼별 설정 (Android, iOS)
+  - 문제 해결
+
+- **[DATABASE_MIGRATION_GUIDE.md](./DATABASE_MIGRATION_GUIDE.md)**: 데이터베이스 마이그레이션 가이드
+  - 모든 SQL 스크립트 분류 및 설명
+  - 테이블 생성 순서
+  - RLS 정책 설정
+  - Storage 설정
+  - 실행 순서 및 체크리스트
 
 ## 개발 가이드
 

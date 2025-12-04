@@ -892,7 +892,7 @@ const ChildcareDetailPage: React.FC = () => {
 
   if (error || !childcare) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className={`min-h-screen bg-gray-50 ${isUsingSampleData ? 'pointer-events-none' : ''}`}>
         <div className="px-4 py-6">
           <div className="text-center mb-6">
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1015,22 +1015,6 @@ const ChildcareDetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* API 실패 알림 */}
-      {isUsingSampleData && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mx-4 mt-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertCircle className="h-5 w-5 text-yellow-400" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">
-                <strong>주의:</strong> 현재 어린이집 상세 정보를 불러올 수 없어 임시 데이터를 표시하고 있습니다. 
-                잠시 후 다시 시도해주세요.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 탭 내용 */}
       <div>
@@ -3202,6 +3186,36 @@ const ChildcareDetailPage: React.FC = () => {
                 {profileReportLoading ? '신고 중...' : '신고하기'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 샘플 데이터 팝업 */}
+      {isUsingSampleData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 pointer-events-auto">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="w-8 h-8 text-red-500" />
+              </div>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">
+                죄송합니다. 파일을 불러오지 못했습니다.
+              </h2>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                없는 시설이거나 잘못된 시설 정보 인거같습니다.
+                <br />
+                자세한건 문의하기를 통해 알려주세요.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const type = searchParams.get('type') || 'childcare'
+                navigate(`/kindergarten-map?type=${type}`)
+              }}
+              className="w-full px-4 py-3 bg-[#fb8678] text-white rounded-xl font-medium hover:bg-[#fb8678]/90 transition-colors"
+            >
+              확인
+            </button>
           </div>
         </div>
       )}
