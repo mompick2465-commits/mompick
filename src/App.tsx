@@ -32,6 +32,7 @@ import PlaygroundReviewPhotosPage from './components/PlaygroundReviewPhotosPage'
 import ContactPage from './components/ContactPage'
 import ContactListPage from './components/ContactListPage'
 import ContactDetailPage from './components/ContactDetailPage'
+import TermsView from './components/TermsView'
 import { PageProvider, usePageContext } from './contexts/PageContext'
 import { LikeProvider } from './contexts/LikeContext'
 import { NotificationProvider } from './contexts/NotificationContext'
@@ -292,7 +293,9 @@ const MainContentWrapper = () => {
   return (
     <>
       <Header />
-      <main>
+      <main style={{ 
+        paddingTop: `calc(env(safe-area-inset-top) + 104px)`,
+      }}>
         {renderMainContent()}
       </main>
 
@@ -440,11 +443,6 @@ function App() {
       <LikeProvider>
         <NotificationProvider>
           <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-            {/* iOS StatusBar 배경을 위한 고정 영역 */}
-            <div 
-              className="fixed top-0 left-0 right-0 bg-white z-[9998]"
-              style={{ height: 'env(safe-area-inset-top)' }}
-            />
             <div className="App bg-white min-h-screen">
               <Routes>
                 <Route path="/" element={<Splash />} />
@@ -577,6 +575,7 @@ function App() {
                     <ContactDetailPage />
                   </ProtectedRoute>
                 } />
+                <Route path="/terms/:type" element={<TermsView />} />
               </Routes>
             </div>
           </Router>

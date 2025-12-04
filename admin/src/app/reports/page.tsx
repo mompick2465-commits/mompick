@@ -43,7 +43,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'reviewed' | 'resolved'>('all')
-  const [filterTargetType, setFilterTargetType] = useState<'all' | 'post' | 'comment' | 'review' | 'building_image' | 'meal_image'>('all')
+  const [filterTargetType, setFilterTargetType] = useState<'all' | 'post' | 'comment' | 'review' | 'building_image' | 'meal_image' | 'profile'>('all')
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
   const [sortBy, setSortBy] = useState<'date' | 'status' | 'type'>('date')
 
@@ -83,6 +83,7 @@ export default function ReportsPage() {
     const matchesStatus = filterStatus === 'all' || report.status === filterStatus
     const matchesTargetType = filterTargetType === 'all' || 
       (filterTargetType === 'post' && report.target_type === 'post') ||
+      (filterTargetType === 'profile' && report.target_type === 'profile') ||
       (filterTargetType === 'comment' && (report.target_type === 'comment' || report.target?.type === 'comment' || report.target?.type === 'reply')) ||
       (filterTargetType === 'review' && (report.target_type === 'review' || report.target_type === 'review_image')) ||
       (filterTargetType === 'building_image' && report.target_type === 'building_image') ||
@@ -115,6 +116,7 @@ export default function ReportsPage() {
     }
     
     if (targetType === 'post') return '게시글'
+    if (targetType === 'profile') return '프로필'
     if (targetType === 'comment') {
       if (report.target?.type === 'reply') return '답글'
       return '댓글'
@@ -170,6 +172,33 @@ export default function ReportsPage() {
     }
     
     if (targetType === 'post') return '커뮤니티 페이지'
+    if (targetType === 'profile') {
+      // 프로필 신고 - facility_type에 따라 발생 위치 표시
+      let facilityType = report.facility_type
+      let facilityName = report.facility_name
+      
+      let location = ''
+      if (facilityType === 'kindergarten') {
+        location = '유치원 상세보기 페이지'
+      } else if (facilityType === 'childcare') {
+        location = '어린이집 상세보기 페이지'
+      } else if (facilityType === 'playground') {
+        location = '놀이시설 상세보기 페이지'
+      } else {
+        // facility_type이 없으면 커뮤니티 페이지로 간주
+        return '커뮤니티 페이지 (프로필 사진)'
+      }
+      
+      // 칭찬탭에서 신고한 것으로 표시
+      location += ' (칭찬탭)'
+      
+      // 시설명이 있으면 추가 표시
+      if (facilityName) {
+        location += ` - ${facilityName}`
+      }
+      
+      return location
+    }
     if (targetType === 'comment') return '커뮤니티 페이지'
     if (targetType === 'review' || targetType === 'review_image') {
       // 원본 target_type에서 facility_type 추론
@@ -222,6 +251,32 @@ export default function ReportsPage() {
       if (facilityType === 'playground') return '놀이시설 상세보기 페이지 (급식 탭)'
       return '상세보기 페이지 (급식 탭)'
     }
+    if (targetType === 'profile') {
+      // 프로필 신고 - facility_type과 facility_name으로 발생 위치 표시
+      let facilityType = report.facility_type
+      let facilityName = report.facility_name
+      
+      let location = ''
+      if (facilityType === 'kindergarten') {
+        location = '유치원 상세보기 페이지'
+      } else if (facilityType === 'childcare') {
+        location = '어린이집 상세보기 페이지'
+      } else if (facilityType === 'playground') {
+        location = '놀이시설 상세보기 페이지'
+      } else {
+        location = '상세보기 페이지'
+      }
+      
+      // 칭찬탭에서 신고한 것으로 표시
+      location += ' (칭찬탭)'
+      
+      // 시설명이 있으면 추가 표시
+      if (facilityName) {
+        location += ` - ${facilityName}`
+      }
+      
+      return location
+    }
     
     // target_type이 없고 post_id도 없으면 알 수 없음
     if (!targetType && !report.post_id) {
@@ -255,6 +310,10 @@ export default function ReportsPage() {
     if (targetType === 'review' && report.target?.facility_name) {
       return report.target.facility_name
     }
+    // 프로필 신고인 경우 피신고자 이름
+    if (targetType === 'profile' && report.targetAuthor) {
+      return report.targetAuthor.full_name || '알 수 없음'
+    }
     // 게시글인 경우 내용 요약
     if (targetType === 'post' && report.target?.content) {
       return truncateText(report.target.content, 50)
@@ -282,6 +341,7 @@ export default function ReportsPage() {
     }
     
     if (targetType === 'post') return <FileText className="h-4 w-4" />
+    if (targetType === 'profile') return <ImageIcon className="h-4 w-4" />
     if (targetType === 'comment') {
       if (report.target?.type === 'reply') return <MessageSquare className="h-4 w-4" />
       return <MessageSquare className="h-4 w-4" />
@@ -382,6 +442,7 @@ export default function ReportsPage() {
     const typeMap: { [key: string]: string } = {
       'spam': '스팸/광고',
       'inappropriate': '부적절한 내용',
+      'inappropriate_image': '부적절한 이미지 사용',
       'harassment': '괴롭힘/폭력',
       'wrong_purpose': '사진의 목적이 다름',
       'wrong_image': '사진이 다름',
@@ -433,6 +494,7 @@ export default function ReportsPage() {
                 >
                   <option value="all">전체 유형</option>
                   <option value="post">게시글</option>
+                  <option value="profile">프로필</option>
                   <option value="comment">댓글/답글</option>
                   <option value="review">칭찬</option>
                   <option value="building_image">건물사진</option>
@@ -789,7 +851,7 @@ export default function ReportsPage() {
               </div>
 
               {/* 신고 대상 (시설명 또는 게시글) */}
-              {selectedReport.target && (
+              {selectedReport.target && selectedReport.target_type !== 'profile' && (
                 <div>
                   <h4 className="font-medium mb-2">
                     {(selectedReport.target_type === 'building_image' || selectedReport.target_type === 'meal_image') ? '신고된 시설' : selectedReport.target_type === 'review' ? '신고된 시설' : selectedReport.target_type === 'post' ? '신고된 게시글' : '댓글이 속한 게시글'}
@@ -818,6 +880,42 @@ export default function ReportsPage() {
                         카테고리: {selectedReport.target.post.category} | 위치: {selectedReport.target.post.location}
                       </p>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* 프로필 신고인 경우 피신고자 정보 표시 */}
+              {selectedReport.target_type === 'profile' && selectedReport.targetAuthor && (
+                <div>
+                  <h4 className="font-medium mb-2">피신고자</h4>
+                  <div className="bg-gray-50 p-3 rounded">
+                    <div className="flex items-center space-x-3">
+                      {selectedReport.targetAuthor.profile_image_url ? (
+                        <img
+                          src={selectedReport.targetAuthor.profile_image_url}
+                          alt={selectedReport.targetAuthor.full_name}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+                          <span className="text-lg font-medium text-gray-600">
+                            {selectedReport.targetAuthor.full_name?.charAt(0) || '?'}
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-medium text-sm">{selectedReport.targetAuthor.full_name}</p>
+                        {selectedReport.targetAuthor.nickname && (
+                          <p className="text-xs text-gray-500">@{selectedReport.targetAuthor.nickname}</p>
+                        )}
+                        {selectedReport.facility_name && (
+                          <p className="text-xs text-gray-500 mt-1">시설: {selectedReport.facility_name}</p>
+                        )}
+                        {selectedReport.facility_code && (
+                          <p className="text-xs text-gray-500">시설 코드: {selectedReport.facility_code}</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

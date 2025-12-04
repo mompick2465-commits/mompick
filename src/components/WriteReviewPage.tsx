@@ -230,7 +230,7 @@ const WriteReviewPage: React.FC = () => {
         </div>
 
         {/* 사진 업로드 */}
-        <div className="px-2">
+        <div className="px-2 pb-[30px]">
           <label className="block text-base font-bold text-gray-600 mb-2 px-1">
             사진 추가
           </label>

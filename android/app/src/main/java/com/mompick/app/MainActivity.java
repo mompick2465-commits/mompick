@@ -165,8 +165,14 @@ public class MainActivity extends BridgeActivity {
                 // 카카오맵을 위한 최적화된 User Agent
                 webSettings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36");
                 
+                // 스크롤바 숨김 및 오버스크롤 방지
+                webView.setVerticalScrollBarEnabled(false);
+                webView.setHorizontalScrollBarEnabled(false);
+                webView.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
+                
                 Log.d("MainActivity", "WebView configured for KakaoMap");
                 Log.d("MainActivity", "User Agent: " + webSettings.getUserAgentString());
+                Log.d("MainActivity", "스크롤바 숨김 및 오버스크롤 방지 설정 완료");
             }
         } catch (Exception e) {
             Log.e("MainActivity", "Error configuring WebView", e);

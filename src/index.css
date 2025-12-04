@@ -17,6 +17,16 @@
 
 
 @layer base {
+  html {
+    /* 모바일 스크롤바 숨김 */
+    -ms-overflow-style: none;  /* Internet Explorer 10+ */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  html::-webkit-scrollbar {
+    display: none;  /* Safari and Chrome */
+  }
+  
   body {
     font-family: 'Inter', system-ui, sans-serif;
     background: #ffffff;
@@ -26,6 +36,19 @@
     /* iOS에서 시스템 UI와 겹치지 않도록 설정 */
     margin: 0;
     overflow-x: hidden;
+    /* 모바일 스크롤바 숨김 */
+    -ms-overflow-style: none;  /* Internet Explorer 10+ */
+    scrollbar-width: none;  /* Firefox */
+    /* 안드로이드 오버스크롤 방지 (흔들림 방지) */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  body::-webkit-scrollbar {
+    display: none;  /* Safari and Chrome */
+    width: 0;  /* 안드로이드 WebView용 */
+    height: 0;  /* 안드로이드 WebView용 */
   }
   
   /* iOS에서 루트 컨테이너가 Safe Area를 고려하도록 설정 */
@@ -37,6 +60,19 @@
     padding-bottom: env(safe-area-inset-bottom);
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+    /* 모바일 스크롤바 숨김 */
+    -ms-overflow-style: none;  /* Internet Explorer 10+ */
+    scrollbar-width: none;  /* Firefox */
+    /* 안드로이드 오버스크롤 방지 (흔들림 방지) */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  #root::-webkit-scrollbar {
+    display: none;  /* Safari and Chrome */
+    width: 0;  /* 안드로이드 WebView용 */
+    height: 0;  /* 안드로이드 WebView용 */
   }
   
   /* App 컨테이너는 Safe Area를 상속받음 */
@@ -46,6 +82,18 @@
   
   * {
     -webkit-tap-highlight-color: transparent;
+    /* 안드로이드 오버스크롤 방지 (흔들림 방지) */
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+    /* 모든 스크롤 가능한 요소에 스크롤바 숨김 */
+    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;  /* IE and Edge */
+  }
+  
+  *::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari, Opera */
+    width: 0;  /* 안드로이드 WebView용 */
+    height: 0;  /* 안드로이드 WebView용 */
   }
 
   /* 상태바 영역 처리 */
@@ -109,9 +157,36 @@
   40% { transform: scale(1.25); }
   100% { transform: scale(1); }
 }
-.animate-heart-bounce {
-  animation: heartBounceOnce 300ms ease-out;
-}
+  .animate-heart-bounce {
+    animation: heartBounceOnce 300ms ease-out;
+  }
+
+  /* 체크박스 애니메이션 */
+  @keyframes checkboxCheck {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.5;
+    }
+    50% {
+      transform: scale(1.1);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  input[type="checkbox"]:checked {
+    animation: checkboxCheck 0.3s ease-out;
+  }
+
+  input[type="checkbox"] {
+    transition: all 0.2s ease-in-out;
+  }
+
+  input[type="checkbox"]:active {
+    transform: scale(0.95);
+  }
 
 @layer components {
   .btn-primary {

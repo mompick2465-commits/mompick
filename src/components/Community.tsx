@@ -1,4 +1,4 @@
-import { MessageCircle, Heart, Share2, User, Clock, ThumbsUp, Plus, Search, Filter, MapPin, Star, Users, Camera, Smile, Sparkles, X, MoreVertical, Edit, Trash2, Flag, Shield } from 'lucide-react'
+import { MessageCircle, Heart, Share2, User, Clock, ThumbsUp, Plus, Search, Filter, MapPin, Star, Users, Camera, Smile, Sparkles, X, MoreVertical, Edit, Trash2, Flag, Shield, ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -95,10 +95,33 @@ const Community = () => {
   const [showBlockModal, setShowBlockModal] = useState<boolean>(false)
   const [currentBlockPost, setCurrentBlockPost] = useState<CommunityPost | null>(null)
   const [blockLoading, setBlockLoading] = useState<boolean>(false)
+  
+  // 댓글 차단/신고 관련 상태
+  const [pendingBlockCommentUserId, setPendingBlockCommentUserId] = useState<string | null>(null)
+  const [pendingReportComment, setPendingReportComment] = useState<{ commentId: string; userId: string } | null>(null)
+  const [showCommentReportModal, setShowCommentReportModal] = useState<boolean>(false)
+  const [commentReportReason, setCommentReportReason] = useState<string>('')
+  const [commentReportType, setCommentReportType] = useState<string>('spam')
+  const [commentReportLoading, setCommentReportLoading] = useState<boolean>(false)
+  const [showCommentBlockModal, setShowCommentBlockModal] = useState<boolean>(false)
+  
+  // 프로필 사진 전체보기 뷰어 상태
+  const [showProfileImageViewer, setShowProfileImageViewer] = useState<boolean>(false)
+  const [profileImageViewerImages, setProfileImageViewerImages] = useState<string[]>([])
+  const [currentProfileImageIndex, setCurrentProfileImageIndex] = useState<number>(0)
+  const [profileImageViewerPost, setProfileImageViewerPost] = useState<CommunityPost | null>(null)
+  const [profileImageViewerUser, setProfileImageViewerUser] = useState<{ id: string; name: string } | null>(null)
+  const [showProfileImageViewerMenu, setShowProfileImageViewerMenu] = useState<boolean>(false)
+  
+  // 프로필 신고 관련 상태
+  const [showProfileReportModal, setShowProfileReportModal] = useState<boolean>(false)
+  const [profileReportReason, setProfileReportReason] = useState<string>('')
+  const [profileReportType, setProfileReportType] = useState<string>('spam')
+  const [profileReportLoading, setProfileReportLoading] = useState<boolean>(false)
 
   // 모달이 열릴 때 배경 스크롤 비활성화
   useEffect(() => {
-    if (showReportModal || showBlockModal) {
+    if (showReportModal || showBlockModal || showProfileImageViewer || showProfileReportModal || showCommentReportModal || showCommentBlockModal) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = 'unset'
@@ -108,7 +131,215 @@ const Community = () => {
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [showReportModal, showBlockModal])
+  }, [showReportModal, showBlockModal, showProfileImageViewer, showProfileReportModal, showCommentReportModal, showCommentBlockModal])
+  
+  // 프로필 사진 전체보기 열기
+  const openProfileImageViewer = (profileImage: string, childrenImages?: string[], post?: CommunityPost, user?: { id: string; name: string }) => {
+    // 자녀 사진 필터링 (null, undefined, 빈 문자열 제거)
+    const validChildrenImages = (childrenImages || []).filter(img => img && img.trim() !== '')
+    
+    // 프로필 사진과 자녀 사진이 모두 없는 경우 모달을 열지 않음
+    if (!profileImage && validChildrenImages.length === 0) {
+      return
+    }
+    
+    // 프로필 사진이 있으면 첫 번째로, 없으면 자녀 사진만 사용
+    const allImages = profileImage 
+      ? [profileImage, ...validChildrenImages]
+      : validChildrenImages
+    
+    if (allImages.length === 0) {
+      return
+    }
+    
+    setProfileImageViewerImages(allImages)
+    setCurrentProfileImageIndex(0)
+    setProfileImageViewerPost(post || null)
+    setProfileImageViewerUser(user || null)
+    setShowProfileImageViewerMenu(false)
+    setShowProfileImageViewer(true)
+  }
+  
+  // 프로필 사진 전체보기 닫기
+  const closeProfileImageViewer = () => {
+    setShowProfileImageViewer(false)
+    setProfileImageViewerImages([])
+    setCurrentProfileImageIndex(0)
+    setProfileImageViewerPost(null)
+    setProfileImageViewerUser(null)
+    setShowProfileImageViewerMenu(false)
+  }
+  
+  // 프로필 신고 모달 열기
+  const handleOpenProfileReportModal = () => {
+    setShowProfileReportModal(true)
+    setProfileReportReason('')
+    setProfileReportType('spam')
+    setShowProfileImageViewerMenu(false)
+  }
+  
+  // 프로필 신고 모달 닫기
+  const handleCloseProfileReportModal = () => {
+    setShowProfileReportModal(false)
+    setProfileReportReason('')
+    setProfileReportType('spam')
+  }
+  
+  // 프로필 신고 처리 (중복 신고 허용)
+  const handleSubmitProfileReport = async () => {
+    if (!currentUser || !profileReportReason.trim()) return
+    if (!profileImageViewerPost && !profileImageViewerUser) return
+    
+    setProfileReportLoading(true)
+    try {
+      const reporterId = currentUser.id
+      
+      // 게시글 작성자 프로필 신고인 경우
+      if (profileImageViewerPost) {
+        const { error } = await supabase
+          .from('reports')
+          .insert({
+            post_id: profileImageViewerPost.id,
+            reporter_id: reporterId,
+            report_reason: profileReportReason.trim(),
+            report_type: profileReportType,
+            target_type: 'profile' // 프로필 신고임을 명시
+          })
+
+        // 프로필 신고는 중복 허용이므로, UNIQUE 제약조건 위반 에러(409 Conflict)는 성공으로 처리
+        if (error) {
+        // Supabase에서 409 Conflict는 UNIQUE 제약조건 위반을 의미
+        // 에러 코드나 메시지로 중복 신고를 판단
+        const errorMessage = error.message?.toLowerCase() || ''
+        const errorCode = error.code || ''
+        const errorDetails = error.details?.toLowerCase() || ''
+        
+        const isDuplicateError = 
+          errorCode === '23505' || // PostgreSQL UNIQUE 제약조건 위반
+          errorCode === 'PGRST116' || // PostgREST 중복 키 에러
+          errorMessage.includes('duplicate') || 
+          errorMessage.includes('unique') ||
+          errorMessage.includes('conflict') ||
+          errorDetails.includes('duplicate') ||
+          errorDetails.includes('unique') ||
+          errorDetails.includes('conflict') ||
+          // HTTP 상태 코드 확인 (Supabase 클라이언트가 status를 제공하는 경우)
+          (error as any)?.status === 409 ||
+          (error as any)?.statusCode === 409
+        
+        if (isDuplicateError) {
+          // 중복 신고도 성공으로 처리 (프로필 신고는 중복 허용)
+          // 콘솔 로그는 개발 환경에서만 출력 (프로덕션에서는 조용히 처리)
+          if (process.env.NODE_ENV === 'development') {
+            console.log('중복 신고 감지됨, 성공으로 처리:', error)
+          }
+          alert('신고가 성공적으로 접수되었습니다.')
+          handleCloseProfileReportModal()
+          closeProfileImageViewer()
+          return
+        }
+          console.error('신고 처리 오류:', error)
+          alert('신고 처리 중 오류가 발생했습니다.')
+          return
+        }
+
+        alert('신고가 성공적으로 접수되었습니다.')
+        handleCloseProfileReportModal()
+        closeProfileImageViewer()
+        return
+      }
+      
+      // 댓글/답글 작성자 프로필 신고인 경우
+      if (profileImageViewerUser) {
+        // 댓글 작성자 프로필 신고는 현재 게시글 ID를 사용
+        if (currentPost) {
+          const { error } = await supabase
+            .from('reports')
+            .insert({
+              post_id: currentPost.id,
+              reporter_id: reporterId,
+              report_reason: profileReportReason.trim(),
+              report_type: profileReportType,
+              target_type: 'profile', // 프로필 신고임을 명시
+              target_id: profileImageViewerUser.id // 댓글 작성자 ID (target_id 사용)
+            })
+
+          // 프로필 신고는 중복 허용이므로, UNIQUE 제약조건 위반 에러(409 Conflict)는 성공으로 처리
+          if (error) {
+            const errorMessage = error.message?.toLowerCase() || ''
+            const errorCode = error.code || ''
+            const errorDetails = error.details?.toLowerCase() || ''
+            
+            const isDuplicateError = 
+              errorCode === '23505' || 
+              errorCode === 'PGRST116' || 
+              errorMessage.includes('duplicate') || 
+              errorMessage.includes('unique') ||
+              errorMessage.includes('conflict') ||
+              errorDetails.includes('duplicate') ||
+              errorDetails.includes('unique') ||
+              errorDetails.includes('conflict') ||
+              (error as any)?.status === 409 ||
+              (error as any)?.statusCode === 409
+            
+            if (isDuplicateError) {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('중복 신고 감지됨, 성공으로 처리:', error)
+              }
+              alert('신고가 성공적으로 접수되었습니다.')
+              handleCloseProfileReportModal()
+              closeProfileImageViewer()
+              return
+            }
+            console.error('신고 처리 오류:', error)
+            alert('신고 처리 중 오류가 발생했습니다.')
+            return
+          }
+
+          alert('신고가 성공적으로 접수되었습니다.')
+          handleCloseProfileReportModal()
+          closeProfileImageViewer()
+          return
+        }
+      }
+    } catch (error: any) {
+      // 중복 신고 에러인 경우 성공으로 처리
+      const errorMessage = error?.message?.toLowerCase() || ''
+      const errorCode = error?.code || ''
+      
+      const isDuplicateError = 
+        error?.status === 409 ||
+        error?.statusCode === 409 ||
+        errorCode === '23505' || 
+        errorCode === 'PGRST116' ||
+        errorMessage.includes('duplicate') || 
+        errorMessage.includes('unique') ||
+        errorMessage.includes('conflict')
+      
+      if (isDuplicateError) {
+        // 중복 신고도 성공으로 처리 (프로필 신고는 중복 허용)
+        // 콘솔 로그는 개발 환경에서만 출력 (프로덕션에서는 조용히 처리)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('중복 신고 감지됨 (catch), 성공으로 처리:', error)
+        }
+        alert('신고가 성공적으로 접수되었습니다.')
+        handleCloseProfileReportModal()
+        closeProfileImageViewer()
+        return
+      }
+      console.error('신고 처리 오류:', error)
+      alert('신고 처리 중 오류가 발생했습니다.')
+    } finally {
+      setProfileReportLoading(false)
+    }
+  }
+  
+  // 프로필 사진 인덱스 변경
+  const setProfileImageIndex = (index: number) => {
+    if (index >= 0 && index < profileImageViewerImages.length) {
+      setCurrentProfileImageIndex(index)
+    }
+  }
 
   // URL에서 카테고리 정보를 가져와서 초기 선택 상태 설정
   useEffect(() => {
@@ -118,7 +349,7 @@ const Community = () => {
       // 카테고리명으로 ID 찾기 (하드코딩된 매핑 사용)
       const categoryMapping: { [key: string]: string } = {
         '어린이집,유치원': 'kindergarten',
-        '소아과 후기': 'hospital',
+        '놀이시설': 'playground',
         '지역 정보': 'location',
         '육아 팁': 'tips'
       }
@@ -148,7 +379,7 @@ const Community = () => {
   useEffect(() => {
     const fetchCategoryCounts = async () => {
       try {
-        const categories = ['어린이집,유치원', '소아과 후기', '지역 정보', '육아 팁']
+        const categories = ['어린이집,유치원', '놀이시설', '지역 정보', '육아 팁']
         const counts: { [key: string]: number } = {}
         
         for (const category of categories) {
@@ -182,7 +413,7 @@ const Community = () => {
   // popularTopics 배열을 여기로 이동 (useEffect 밖에서 정의)
   const popularTopics: PopularTopic[] = [
     { id: 'kindergarten', title: '어린이집,유치원', count: getCategoryCount('어린이집,유치원'), icon: '🏫', emoji: '💕' },
-    { id: 'hospital', title: '소아과 후기', count: getCategoryCount('소아과 후기'), icon: '🏥', emoji: '💊' },
+    { id: 'playground', title: '놀이시설', count: getCategoryCount('놀이시설'), icon: '🎠', emoji: '🎪' },
     { id: 'location', title: '지역 정보', count: getCategoryCount('지역 정보'), icon: '📍', emoji: '🗺️' },
     { id: 'tips', title: '육아 팁', count: getCategoryCount('육아 팁'), icon: '💡', emoji: '✨' }
   ]
@@ -562,6 +793,164 @@ const Community = () => {
     } finally {
       setBlockLoading(false)
       handleCloseBlockModal()
+    }
+  }
+
+  // 댓글 작성자 차단
+  const handleBlockCommentAuthor = async (userId: string) => {
+    if (!userId || !currentUser) return
+    setPendingBlockCommentUserId(userId)
+    setShowCommentBlockModal(true)
+    setShowCommentMenu(null)
+  }
+
+  // 댓글 작성자 차단 확인 처리
+  const handleConfirmBlockCommentAuthor = async () => {
+    if (!pendingBlockCommentUserId || !currentUser) return
+    try {
+      const userIdToUse = currentUser.auth_user_id || currentUser.id
+      const { error } = await supabase
+        .from('blocked_users')
+        .insert({
+          blocker_id: userIdToUse,
+          blocked_user_id: pendingBlockCommentUserId,
+          created_at: new Date().toISOString()
+        })
+      if (error) throw error
+      setShowCommentBlockModal(false)
+      setPendingBlockCommentUserId(null)
+      setShowCommentMenu(null)
+      // 차단된 사용자의 댓글을 목록에서 제거
+      setComments(prev => prev.filter(comment => comment.user_id !== pendingBlockCommentUserId))
+      alert('차단되었습니다.')
+    } catch (error) {
+      console.error('차단 처리 중 오류:', error)
+      alert('차단 처리 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 댓글 신고
+  const handleReportComment = async (commentId: string, userId: string) => {
+    setPendingReportComment({ commentId, userId })
+    setShowCommentReportModal(true)
+    setShowCommentMenu(null)
+  }
+
+  // 댓글 신고 제출
+  const handleSubmitCommentReport = async () => {
+    if (!pendingReportComment || !currentUser || !commentReportReason.trim()) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+    try {
+      setCommentReportLoading(true)
+      
+      // 현재 사용자의 profile ID 가져오기
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('로그인이 필요합니다.')
+      
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single()
+      
+      if (profileError || !profileData) {
+        throw new Error('프로필을 찾을 수 없습니다.')
+      }
+      
+      const { error } = await supabase
+        .from('reports')
+        .insert({
+          reporter_id: profileData.id,
+          report_reason: commentReportReason.trim(),
+          report_type: commentReportType,
+          status: 'pending',
+          target_type: 'comment',
+          target_id: pendingReportComment.commentId,
+          post_id: currentPost?.id || null
+        })
+      
+      // 댓글 신고는 중복 허용이므로, UNIQUE 제약조건 위반 에러(409 Conflict)는 성공으로 처리
+      if (error) {
+        const errorMessage = error.message?.toLowerCase() || ''
+        const errorCode = error.code || ''
+        const errorDetails = error.details?.toLowerCase() || ''
+        const errorHint = (error as any)?.hint?.toLowerCase() || ''
+        
+        // 409 Conflict 오류 감지 (더 포괄적으로)
+        const isDuplicateError = 
+          errorCode === '23505' || 
+          errorCode === 'PGRST116' || 
+          errorMessage.includes('duplicate') || 
+          errorMessage.includes('unique') ||
+          errorMessage.includes('conflict') ||
+          errorMessage.includes('already exists') ||
+          errorDetails.includes('duplicate') ||
+          errorDetails.includes('unique') ||
+          errorDetails.includes('conflict') ||
+          errorHint.includes('duplicate') ||
+          errorHint.includes('unique') ||
+          (error as any)?.status === 409 ||
+          (error as any)?.statusCode === 409 ||
+          (error as any)?.statusText === 'Conflict' ||
+          String(error).includes('409') ||
+          String(error).includes('Conflict')
+        
+        if (isDuplicateError) {
+          // 중복 신고는 성공으로 처리
+          alert('신고가 성공적으로 접수되었습니다.')
+          setShowCommentReportModal(false)
+          setPendingReportComment(null)
+          setCommentReportReason('')
+          setCommentReportType('spam')
+          setShowCommentMenu(null)
+          return
+        }
+        console.error('신고 처리 오류:', error)
+        alert('신고 처리 중 오류가 발생했습니다.')
+        return
+      }
+
+      alert('신고가 성공적으로 접수되었습니다.')
+      setShowCommentReportModal(false)
+      setPendingReportComment(null)
+      setCommentReportReason('')
+      setCommentReportType('spam')
+      setShowCommentMenu(null)
+    } catch (error: any) {
+      const errorMessage = error?.message?.toLowerCase() || ''
+      const errorCode = error?.code || ''
+      const errorString = String(error).toLowerCase()
+      
+      // 409 Conflict 오류 감지 (더 포괄적으로)
+      const isDuplicateError = 
+        error?.status === 409 ||
+        error?.statusCode === 409 ||
+        error?.statusText === 'Conflict' ||
+        errorCode === '23505' || 
+        errorCode === 'PGRST116' ||
+        errorMessage.includes('duplicate') || 
+        errorMessage.includes('unique') ||
+        errorMessage.includes('conflict') ||
+        errorMessage.includes('already exists') ||
+        errorString.includes('409') ||
+        errorString.includes('conflict')
+      
+      if (isDuplicateError) {
+        // 중복 신고는 성공으로 처리
+        alert('신고가 성공적으로 접수되었습니다.')
+        setShowCommentReportModal(false)
+        setPendingReportComment(null)
+        setShowCommentMenu(null)
+        setCommentReportReason('')
+        setCommentReportType('spam')
+        return
+      }
+      console.error('댓글 신고 오류:', error)
+      alert('신고 처리 중 오류가 발생했습니다.')
+    } finally {
+      setCommentReportLoading(false)
     }
   }
 
@@ -1053,16 +1442,36 @@ const Community = () => {
   // 댓글 모달 열림/닫힘에 따른 배경 스크롤 제어
   useEffect(() => {
     if (showCommentModal) {
-      // 모달이 열렸을 때 배경 스크롤 막기
+      // 현재 스크롤 위치 저장
+      const scrollY = window.scrollY
+      // 모달이 열렸을 때 배경 스크롤 막기 및 위치 고정
+      document.body.style.position = 'fixed'
+      document.body.style.top = `-${scrollY}px`
+      document.body.style.width = '100%'
       document.body.style.overflow = 'hidden'
     } else {
       // 모달이 닫혔을 때 배경 스크롤 복원
+      const scrollY = document.body.style.top
+      document.body.style.position = ''
+      document.body.style.top = ''
+      document.body.style.width = ''
       document.body.style.overflow = 'unset'
+      // 저장된 스크롤 위치로 복원
+      if (scrollY) {
+        window.scrollTo(0, parseInt(scrollY || '0') * -1)
+      }
     }
 
     // 컴포넌트 언마운트 시 스크롤 복원
     return () => {
+      const scrollY = document.body.style.top
+      document.body.style.position = ''
+      document.body.style.top = ''
+      document.body.style.width = ''
       document.body.style.overflow = 'unset'
+      if (scrollY) {
+        window.scrollTo(0, parseInt(scrollY || '0') * -1)
+      }
     }
   }, [showCommentModal])
 
@@ -1184,8 +1593,8 @@ const Community = () => {
                     {topic.id === 'kindergarten' && (
                       <img src="/icons/kindergarten.svg" alt="어린이집" className="w-full h-full" />
                     )}
-                    {topic.id === 'hospital' && (
-                      <img src="/icons/pediatrics.svg" alt="소아과" className="w-full h-full" />
+                    {topic.id === 'playground' && (
+                      <img src="/icons/facilities.svg" alt="놀이시설" className="w-full h-full" />
                     )}
                     {topic.id === 'location' && (
                       <img src="/icons/location.svg" alt="지역정보" className="w-full h-full" />
@@ -1219,13 +1628,32 @@ const Community = () => {
             posts.map((post) => (
               <div 
                 key={post.id} 
-                className="bg-white/90 backdrop-blur-sm p-6 transition-all duration-300 transform hover:scale-[1.02] cursor-pointer"
+                className="bg-white/90 backdrop-blur-sm p-6 transition-transform duration-300 cursor-pointer hover:scale-[1.02]"
+                style={{ 
+                  transform: 'translateZ(0)',
+                  willChange: 'transform',
+                  backfaceVisibility: 'hidden',
+                  WebkitBackfaceVisibility: 'hidden'
+                }}
                 onClick={() => handlePostClick(post)}
               >
                 {/* Post Header */}
                 <div className="flex items-start space-x-3 mb-4">
                   <div className="relative">
-                    <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg">
+                    <div 
+                      className="w-10 h-10 rounded-2xl overflow-hidden shadow-lg cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation() // 게시글 클릭 이벤트 전파 방지
+                        // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                        const hasProfileImage = post.author_profile_image && post.author_profile_image.trim() !== ''
+                        const hasChildrenImages = post.author_children_images && post.author_children_images.length > 0 && 
+                          post.author_children_images.some(img => img && img.trim() !== '')
+                        
+                        if (hasProfileImage || hasChildrenImages) {
+                          openProfileImageViewer(post.author_profile_image || '', post.author_children_images, post)
+                        }
+                      }}
+                    >
                       {post.author_profile_image ? (
                         <img
                           src={post.author_profile_image}
@@ -1357,7 +1785,7 @@ const Community = () => {
                         className="p-2 rounded-full hover:bg-gray-100 transition-colors"
                         title="게시글 메뉴"
                       >
-                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                        <MoreVertical className="w-4 h-4 text-[#fb8678]" />
                       </button>
                       
                       {/* 신고 메뉴 드롭다운 */}
@@ -1577,7 +2005,7 @@ const Community = () => {
 
       {/* 댓글 모달 */}
       {showCommentModal && currentPost && (
-        <div className="fixed inset-0 bg-black/50 flex items-end z-50 overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 flex items-end z-50 overflow-hidden" style={{ top: 0 }}>
           <div 
             className="w-full bg-white rounded-t-3xl transform transition-all duration-500 ease-out animate-slide-up"
             style={{ height: '90vh' }}
@@ -1613,8 +2041,24 @@ const Community = () => {
                       <div className="flex space-x-3">
                         <div className="relative w-8 h-8">
                           <div 
-                            className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium"
+                            className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer"
                             style={{ borderRadius: '12px' }}
+                            onClick={(e) => {
+                              e.stopPropagation() // 댓글 클릭 이벤트 전파 방지
+                              // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                              const hasProfileImage = comment.user_profile_image && comment.user_profile_image.trim() !== ''
+                              const hasChildrenImages = comment.user_children_images && comment.user_children_images.length > 0 && 
+                                comment.user_children_images.some(img => img && img.trim() !== '')
+                              
+                              if (hasProfileImage || hasChildrenImages) {
+                                openProfileImageViewer(
+                                  comment.user_profile_image || '', 
+                                  comment.user_children_images, 
+                                  undefined,
+                                  { id: comment.user_id, name: comment.user_name }
+                                )
+                              }
+                            }}
                           >
                             {comment.user_profile_image ? (
                               <img
@@ -1709,33 +2153,55 @@ const Community = () => {
                               </span>
                             </div>
                             
-                            {/* 자신이 작성한 댓글에만 점3개 메뉴 표시 (삭제된 댓글 제외) */}
-                            {currentUser && !comment.is_deleted && (comment.user_id === currentUser.id || comment.user_id === currentUser.auth_user_id) && (
+                            {/* 점3개 메뉴 표시 (삭제된 댓글 제외) */}
+                            {currentUser && !comment.is_deleted && (
                               <div className="relative">
                                 <button
                                   onClick={() => toggleCommentMenu(comment.id)}
-                                  className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                                  className="p-2 rounded-full hover:bg-black/5"
+                                  aria-label="댓글 옵션"
                                 >
-                                  <MoreVertical className="w-4 h-4 text-gray-500" />
+                                  <svg className="w-5 h-5 text-[#fb8678]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                  </svg>
                                 </button>
                                 
                                 {/* 댓글 메뉴 드롭다운 */}
                                 {showCommentMenu === comment.id && (
-                                  <div className="absolute right-0 top-8 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                    <button
-                                      onClick={() => handleStartEditComment(comment)}
-                                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                    >
-                                      <Edit className="w-4 h-4" />
-                                      <span>수정</span>
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteComment(comment.id)}
-                                      className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                      <span>삭제</span>
-                                    </button>
+                                  <div className="absolute right-0 top-10 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[120px]">
+                                    {comment.user_id === currentUser.id || comment.user_id === currentUser.auth_user_id ? (
+                                      <>
+                                        <button
+                                          onClick={() => handleStartEditComment(comment)}
+                                          className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                        >
+                                          수정하기
+                                        </button>
+                                        <div className="border-t border-gray-200 mx-2"></div>
+                                        <button
+                                          onClick={() => handleDeleteComment(comment.id)}
+                                          className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                        >
+                                          삭제하기
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={() => handleBlockCommentAuthor(comment.user_id)}
+                                          className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                        >
+                                          차단하기
+                                        </button>
+                                        <div className="border-t border-gray-200 mx-2"></div>
+                                        <button
+                                          onClick={() => handleReportComment(comment.id, comment.user_id)}
+                                          className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                        >
+                                          신고하기
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -1834,8 +2300,24 @@ const Community = () => {
                                 <div key={reply.id} className="flex space-x-3">
                                   <div className="relative w-6 h-6">
                                     <div 
-                                      className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium"
+                                      className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
                                       style={{ borderRadius: '8px' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation() // 답글 클릭 이벤트 전파 방지
+                                        // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                                        const hasProfileImage = reply.user_profile_image && reply.user_profile_image.trim() !== ''
+                                        const hasChildrenImages = reply.user_children_images && reply.user_children_images.length > 0 && 
+                                          reply.user_children_images.some(img => img && img.trim() !== '')
+                                        
+                                        if (hasProfileImage || hasChildrenImages) {
+                                          openProfileImageViewer(
+                                            reply.user_profile_image || '', 
+                                            reply.user_children_images, 
+                                            undefined,
+                                            { id: reply.user_id, name: reply.user_name }
+                                          )
+                                        }
+                                      }}
                                     >
                                       {reply.user_profile_image ? (
                                         <img
@@ -1930,33 +2412,55 @@ const Community = () => {
                                         </span>
                                       </div>
                                       
-                                      {/* 자신이 작성한 답글에만 점3개 메뉴 표시 */}
-                                      {currentUser && !reply.is_deleted && (reply.user_id === currentUser.id || reply.user_id === currentUser.auth_user_id) && (
+                                      {/* 점3개 메뉴 표시 (삭제된 답글 제외) */}
+                                      {currentUser && !reply.is_deleted && (
                                         <div className="relative">
                                           <button
                                             onClick={() => toggleCommentMenu(reply.id)}
-                                            className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                                            className="p-2 rounded-full hover:bg-black/5"
+                                            aria-label="답글 옵션"
                                           >
-                                            <MoreVertical className="w-3 h-3 text-gray-500" />
+                                            <svg className="w-5 h-5 text-[#fb8678]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                            </svg>
                                           </button>
                                           
                                           {/* 답글 메뉴 드롭다운 */}
                                           {showCommentMenu === reply.id && (
-                                            <div className="absolute right-0 top-6 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                              <button
-                                                onClick={() => handleStartEditComment(reply)}
-                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                              >
-                                                <Edit className="w-4 h-4" />
-                                                <span>수정</span>
-                                              </button>
-                                              <button
-                                                onClick={() => handleDeleteComment(reply.id)}
-                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                              >
-                                                <Trash2 className="w-4 h-4" />
-                                                <span>삭제</span>
-                                              </button>
+                                            <div className="absolute right-0 top-10 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[120px]">
+                                              {reply.user_id === currentUser.id || reply.user_id === currentUser.auth_user_id ? (
+                                                <>
+                                                  <button
+                                                    onClick={() => handleStartEditComment(reply)}
+                                                    className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                  >
+                                                    수정하기
+                                                  </button>
+                                                  <div className="border-t border-gray-200 mx-2"></div>
+                                                  <button
+                                                    onClick={() => handleDeleteComment(reply.id)}
+                                                    className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                  >
+                                                    삭제하기
+                                                  </button>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <button
+                                                    onClick={() => handleBlockCommentAuthor(reply.user_id)}
+                                                    className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                  >
+                                                    차단하기
+                                                  </button>
+                                                  <div className="border-t border-gray-200 mx-2"></div>
+                                                  <button
+                                                    onClick={() => handleReportComment(reply.id, reply.user_id)}
+                                                    className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                  >
+                                                    신고하기
+                                                  </button>
+                                                </>
+                                              )}
                                             </div>
                                           )}
                                         </div>
@@ -2133,33 +2637,55 @@ const Community = () => {
                                                 </span>
                                               </div>
                                               
-                                              {/* 자신이 작성한 답글에만 점3개 메뉴 표시 */}
-                                              {currentUser && !nestedReply.is_deleted && (nestedReply.user_id === currentUser.id || nestedReply.user_id === currentUser.auth_user_id) && (
+                                              {/* 점3개 메뉴 표시 (삭제된 답글 제외) */}
+                                              {currentUser && !nestedReply.is_deleted && (
                                                 <div className="relative">
                                                   <button
                                                     onClick={() => toggleCommentMenu(nestedReply.id)}
-                                                    className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                                                    className="p-2 rounded-full hover:bg-black/5"
+                                                    aria-label="답글 옵션"
                                                   >
-                                                    <MoreVertical className="w-3 h-3 text-gray-500" />
+                                                    <svg className="w-5 h-5 text-[#fb8678]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                                                    </svg>
                                                   </button>
                                                   
                                                   {/* 답글 메뉴 드롭다운 */}
                                                   {showCommentMenu === nestedReply.id && (
-                                                    <div className="absolute right-0 top-6 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                                      <button
-                                                        onClick={() => handleStartEditComment(nestedReply)}
-                                                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                                      >
-                                                        <Edit className="w-4 h-4" />
-                                                        <span>수정</span>
-                                                      </button>
-                                                      <button
-                                                        onClick={() => handleDeleteComment(nestedReply.id)}
-                                                        className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                                      >
-                                                        <Trash2 className="w-4 h-4" />
-                                                        <span>삭제</span>
-                                                      </button>
+                                                    <div className="absolute right-0 top-10 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[120px]">
+                                                      {nestedReply.user_id === currentUser.id || nestedReply.user_id === currentUser.auth_user_id ? (
+                                                        <>
+                                                          <button
+                                                            onClick={() => handleStartEditComment(nestedReply)}
+                                                            className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                          >
+                                                            수정하기
+                                                          </button>
+                                                          <div className="border-t border-gray-200 mx-2"></div>
+                                                          <button
+                                                            onClick={() => handleDeleteComment(nestedReply.id)}
+                                                            className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                          >
+                                                            삭제하기
+                                                          </button>
+                                                        </>
+                                                      ) : (
+                                                        <>
+                                                          <button
+                                                            onClick={() => handleBlockCommentAuthor(nestedReply.user_id)}
+                                                            className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                          >
+                                                            차단하기
+                                                          </button>
+                                                          <div className="border-t border-gray-200 mx-2"></div>
+                                                          <button
+                                                            onClick={() => handleReportComment(nestedReply.id, nestedReply.user_id)}
+                                                            className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                          >
+                                                            신고하기
+                                                          </button>
+                                                        </>
+                                                      )}
                                                     </div>
                                                   )}
                                                 </div>
@@ -2232,7 +2758,7 @@ const Community = () => {
             </div>
 
             {/* 댓글 입력 */}
-            <div className="p-4 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            <div className="p-3 bg-white shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
               <div className="flex space-x-3">
                 <input
                   type="text"
@@ -2289,6 +2815,7 @@ const Community = () => {
                 >
                   <option value="spam">스팸/광고성 게시글</option>
                   <option value="inappropriate">부적절한 내용</option>
+                  <option value="inappropriate_image">부적절한 이미지 사용</option>
                   <option value="harassment">괴롭힘/폭력</option>
                   <option value="other">기타</option>
                 </select>
@@ -2363,6 +2890,325 @@ const Community = () => {
                 className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {blockLoading ? '차단 중...' : '차단하기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 댓글 차단 확인 모달 */}
+      {showCommentBlockModal && pendingBlockCommentUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-6 h-6 text-red-600" />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 mb-2">
+                사용자를 차단하시겠습니까?
+              </h2>
+              <div className="text-sm text-gray-600 text-left space-y-2">
+                <p>• 차단하면 해당 사용자의 댓글이 더 이상 보이지 않습니다.</p>
+                <p>• 상대방은 회원님의 글을 계속 볼 수 있습니다.</p>
+                <p>• 정말 차단하시겠습니까?</p>
+              </div>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => {
+                  setShowCommentBlockModal(false)
+                  setPendingBlockCommentUserId(null)
+                }}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleConfirmBlockCommentAuthor}
+                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium"
+              >
+                차단하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 댓글 신고 모달 */}
+      {showCommentReportModal && pendingReportComment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-4 max-w-lg w-full min-h-[500px] max-h-[95vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">댓글 신고</h3>
+              <button
+                onClick={() => {
+                  setShowCommentReportModal(false)
+                  setPendingReportComment(null)
+                  setCommentReportReason('')
+                  setCommentReportType('spam')
+                }}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto mb-6">
+              <p className="text-gray-600 text-sm mb-4">
+                선택한 댓글을 신고합니다.
+              </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 유형
+                </label>
+                <select
+                  value={commentReportType}
+                  onChange={(e) => setCommentReportType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent"
+                >
+                  <option value="spam">스팸/광고성 게시글</option>
+                  <option value="inappropriate">부적절한 내용</option>
+                  <option value="harassment">괴롭힘/폭력</option>
+                  <option value="other">기타</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 사유
+                </label>
+                <textarea
+                  value={commentReportReason}
+                  onChange={(e) => setCommentReportReason(e.target.value)}
+                  placeholder="신고 사유를 구체적으로 작성해주세요..."
+                  rows={6}
+                  maxLength={500}
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent resize-none text-sm"
+                />
+                <div className="flex justify-between text-xs text-gray-400 font-semibold mt-1">
+                  <span>최대 텍스트 길이</span>
+                  <span>{commentReportReason.length}/500</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowCommentReportModal(false)
+                  setPendingReportComment(null)
+                  setCommentReportReason('')
+                  setCommentReportType('spam')
+                }}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSubmitCommentReport}
+                disabled={commentReportLoading || !commentReportReason.trim()}
+                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {commentReportLoading ? '신고 중...' : '신고하기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 프로필 사진 전체보기 뷰어 */}
+      {showProfileImageViewer && profileImageViewerImages.length > 0 && (
+        <div 
+          className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center"
+          onClick={(e) => {
+            // 메뉴 외부 클릭 시 메뉴 닫기
+            if (!(e.target as Element).closest('.profile-image-viewer-menu-container')) {
+              setShowProfileImageViewerMenu(false)
+            }
+            // 배경 클릭 시 모달 닫기 (메뉴가 열려있지 않을 때만)
+            if (!showProfileImageViewerMenu) {
+              closeProfileImageViewer()
+            }
+          }}
+        >
+          {/* 닫기 버튼 */}
+          <button
+            onClick={closeProfileImageViewer}
+            className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/10 text-white z-10"
+            aria-label="닫기"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* 점 3개 메뉴 버튼 (본인 프로필이 아닐 때만 표시) */}
+          {currentUser && 
+           ((profileImageViewerPost && profileImageViewerPost.author_name !== (currentUser.nickname || currentUser.full_name)) ||
+            (profileImageViewerUser && profileImageViewerUser.name !== (currentUser.nickname || currentUser.full_name))) && (
+            <div className="absolute top-4 right-16 profile-image-viewer-menu-container z-10">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowProfileImageViewerMenu(!showProfileImageViewerMenu)
+                }}
+                className="p-2 rounded-full hover:bg-white/10 text-white"
+                aria-label="옵션 메뉴"
+              >
+                <MoreHorizontal className="w-6 h-6" />
+              </button>
+              {showProfileImageViewerMenu && (
+                <div className="absolute right-0 top-10 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[120px]">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleOpenProfileReportModal()
+                    }}
+                    className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                  >
+                    신고하기
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 이전 버튼 */}
+          {profileImageViewerImages.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setProfileImageIndex((currentProfileImageIndex - 1 + profileImageViewerImages.length) % profileImageViewerImages.length)
+              }}
+              className="absolute left-2 sm:left-4 p-3 rounded-full hover:bg-white/10 text-white z-10"
+              aria-label="이전 이미지"
+            >
+              <ChevronLeft className="w-7 h-7" />
+            </button>
+          )}
+
+          {/* 이미지 */}
+          <div 
+            className="flex-1 flex items-center justify-center max-w-full max-h-full px-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={profileImageViewerImages[currentProfileImageIndex]}
+              alt={`프로필 사진 ${currentProfileImageIndex === 0 ? '본인' : `자녀 ${currentProfileImageIndex}`}`}
+              className="max-w-full max-h-[70vh] object-contain"
+            />
+          </div>
+
+          {/* 다음 버튼 */}
+          {profileImageViewerImages.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setProfileImageIndex((currentProfileImageIndex + 1) % profileImageViewerImages.length)
+              }}
+              className="absolute right-2 sm:right-4 p-3 rounded-full hover:bg-white/10 text-white z-10"
+              aria-label="다음 이미지"
+            >
+              <ChevronRight className="w-7 h-7" />
+            </button>
+          )}
+
+          {/* 자녀 사진 썸네일 (아래쪽에 원형으로 표시) */}
+          {profileImageViewerImages.length > 1 && (
+            <div 
+              className="absolute bottom-8 left-0 right-0 flex justify-center gap-3 px-4 pb-4 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {profileImageViewerImages.map((image, index) => (
+                <button
+                  key={index}
+                  onClick={() => setProfileImageIndex(index)}
+                  className={`w-12 h-12 rounded-full overflow-hidden border-2 transition-all ${
+                    currentProfileImageIndex === index
+                      ? 'border-white scale-110 shadow-lg'
+                      : 'border-white/50 opacity-70 hover:opacity-100 hover:scale-105'
+                  }`}
+                  aria-label={index === 0 ? '본인 프로필' : `자녀 ${index} 프로필`}
+                >
+                  <img
+                    src={image}
+                    alt={index === 0 ? '본인 프로필' : `자녀 ${index} 프로필`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 프로필 신고 모달 */}
+      {showProfileReportModal && (profileImageViewerPost || profileImageViewerUser) && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl p-4 max-w-lg w-full min-h-[500px] max-h-[95vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">프로필 신고</h3>
+              <button
+                onClick={handleCloseProfileReportModal}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto mb-6">
+              <p className="text-gray-600 text-sm mb-4">
+                <strong>{profileImageViewerPost?.author_name || profileImageViewerUser?.name}</strong>님의 프로필을 신고합니다.
+              </p>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 유형
+                </label>
+                <select
+                  value={profileReportType}
+                  onChange={(e) => setProfileReportType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent"
+                >
+                  <option value="spam">스팸/광고성 게시글</option>
+                  <option value="inappropriate">부적절한 내용</option>
+                  <option value="inappropriate_image">부적절한 이미지 사용</option>
+                  <option value="harassment">괴롭힘/폭력</option>
+                  <option value="other">기타</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 사유
+                </label>
+                <textarea
+                  value={profileReportReason}
+                  onChange={(e) => setProfileReportReason(e.target.value)}
+                  placeholder="신고 사유를 구체적으로 작성해주세요..."
+                  rows={6}
+                  maxLength={500}
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent resize-none text-sm"
+                />
+                <div className="flex justify-between text-xs text-gray-400 font-semibold mt-1">
+                  <span>최대 텍스트 길이</span>
+                  <span>{profileReportReason.length}/500</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 flex-shrink-0">
+              <button
+                onClick={handleCloseProfileReportModal}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSubmitProfileReport}
+                disabled={!profileReportReason.trim() || profileReportLoading}
+                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {profileReportLoading ? '신고 중...' : '신고하기'}
               </button>
             </div>
           </div>

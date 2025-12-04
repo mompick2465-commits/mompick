@@ -187,11 +187,15 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // 알림 타입 확인 및 사용자 설정 확인
-    const notificationType = data?.type as string | undefined
+    let notificationType = data?.type as string | undefined
+    // 'system' 타입을 'notice'로 변환
+    if (notificationType === 'system') {
+      notificationType = 'notice'
+    }
     console.log('🔍 알림 타입:', notificationType)
 
-    // 알림 설정 확인 (공지사항은 항상 허용)
-    if (notificationType && notificationType !== 'notice') {
+    // 알림 설정 확인 (모든 알림 타입에 대해 설정 확인)
+    if (notificationType) {
       const { data: settings, error: settingsError } = await supabase
         .from('notification_settings')
         .select('notice, post, comment, reply, review')
@@ -215,6 +219,9 @@ serve(async (req) => {
             break
           case 'review_like':
             canReceive = settings.review !== false
+            break
+          case 'notice':
+            canReceive = settings.notice !== false
             break
         }
 
@@ -290,6 +297,7 @@ serve(async (req) => {
         case 'review_like':
           return 'mompick_review'  // 리뷰 채널
         case 'notice':
+        case 'system': // 'system' 타입도 'notice' 채널 사용
           return 'mompick_notice'  // 공지사항 채널
         default:
           return 'mompick_notifications'  // 기본 채널

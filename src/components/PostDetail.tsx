@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
-import { Heart, MessageCircle, MapPin, ChevronLeft, Share2, MoreVertical, Edit, Trash2, Flag, X, Shield } from 'lucide-react'
+import { Heart, MessageCircle, MapPin, ChevronLeft, ChevronRight, Share2, MoreVertical, Edit, Trash2, Flag, X, Shield, MoreHorizontal } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useLikeContext } from '../contexts/LikeContext'
 import { createLikeNotification, createReplyNotification } from '../utils/notifications'
@@ -50,6 +50,10 @@ const PostDetail = () => {
   const [showMenu, setShowMenu] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  // 이미지 전체보기 뷰어 상태
+  const [showImageViewer, setShowImageViewer] = useState(false)
+  const [imageViewerPhotos, setImageViewerPhotos] = useState<string[]>([])
+  const [imageViewerStartIndex, setImageViewerStartIndex] = useState(0)
   const [comments, setComments] = useState<Comment[]>([])
   const [commentLoading, setCommentLoading] = useState(false)
   const [loadingMoreComments, setLoadingMoreComments] = useState(false)
@@ -57,6 +61,7 @@ const PostDetail = () => {
   const [currentCommentPage, setCurrentCommentPage] = useState(1)
   const commentsPerPage = 20
   const [likeLoading, setLikeLoading] = useState(false)
+  const commentsLoadedRef = useRef<boolean>(false)
   
   // 신고 관련 상태
   const [showReportMenu, setShowReportMenu] = useState<boolean>(false)
@@ -70,13 +75,35 @@ const PostDetail = () => {
   const [blockLoading, setBlockLoading] = useState<boolean>(false)
   // 공유 바텀시트 상태
   const [showShareSheet, setShowShareSheet] = useState<boolean>(false)
+  
+  // 프로필 사진 전체보기 뷰어 상태
+  const [showProfileImageViewer, setShowProfileImageViewer] = useState<boolean>(false)
+  const [profileImageViewerImages, setProfileImageViewerImages] = useState<string[]>([])
+  const [currentProfileImageIndex, setCurrentProfileImageIndex] = useState<number>(0)
+  const [profileImageViewerUser, setProfileImageViewerUser] = useState<{ id: string; name: string } | null>(null)
+  const [showProfileImageViewerMenu, setShowProfileImageViewerMenu] = useState<boolean>(false)
+  
+  // 프로필 신고 관련 상태
+  const [showProfileReportModal, setShowProfileReportModal] = useState<boolean>(false)
+  const [profileReportReason, setProfileReportReason] = useState<string>('')
+  const [profileReportType, setProfileReportType] = useState<string>('spam')
+  const [profileReportLoading, setProfileReportLoading] = useState<boolean>(false)
   const [shareDragStartY, setShareDragStartY] = useState<number | null>(null)
   const [shareDragY, setShareDragY] = useState<number>(0)
   const [shareIsDragging, setShareIsDragging] = useState<boolean>(false)
+  
+  // 댓글 차단/신고 관련 상태
+  const [pendingBlockCommentUserId, setPendingBlockCommentUserId] = useState<string | null>(null)
+  const [pendingReportComment, setPendingReportComment] = useState<{ commentId: string; userId: string } | null>(null)
+  const [showCommentReportModal, setShowCommentReportModal] = useState<boolean>(false)
+  const [commentReportReason, setCommentReportReason] = useState<string>('')
+  const [commentReportType, setCommentReportType] = useState<string>('spam')
+  const [commentReportLoading, setCommentReportLoading] = useState<boolean>(false)
+  const [showCommentBlockModal, setShowCommentBlockModal] = useState<boolean>(false)
 
   // 모달이 열릴 때 배경 스크롤 비활성화
   useEffect(() => {
-    if (showReportModal || showBlockModal || showShareSheet) {
+    if (showReportModal || showBlockModal || showShareSheet || showImageViewer || showProfileImageViewer || showProfileReportModal || showCommentReportModal || showCommentBlockModal) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = 'unset'
@@ -86,7 +113,7 @@ const PostDetail = () => {
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [showReportModal, showBlockModal, showShareSheet])
+  }, [showReportModal, showBlockModal, showShareSheet, showImageViewer, showProfileImageViewer, showProfileReportModal, showCommentReportModal, showCommentBlockModal])
 
   // 공유 시트 터치 핸들러
   const handleShareSheetTouchStart = (e: React.TouchEvent) => {
@@ -187,7 +214,98 @@ const PostDetail = () => {
   // LikeContext 사용
   const { isLiked, toggleLike, refreshLikes } = useLikeContext()
 
-  // 댓글 목록 가져오기
+  // 이미지 뷰어 관련 함수들
+  const openImageViewer = (photos: string[], startIndex: number = 0) => {
+    if (!photos || photos.length === 0) return
+    setImageViewerPhotos(photos)
+    setImageViewerStartIndex(Math.min(Math.max(startIndex, 0), photos.length - 1))
+    setCurrentImageIndex(Math.min(Math.max(startIndex, 0), photos.length - 1))
+    setShowImageViewer(true)
+  }
+
+  const closeImageViewer = () => {
+    setShowImageViewer(false)
+  }
+
+  const goPrevImage = () => {
+    if (imageViewerPhotos.length === 0) return
+    setCurrentImageIndex((prev) => (prev - 1 + imageViewerPhotos.length) % imageViewerPhotos.length)
+  }
+
+  const goNextImage = () => {
+    if (imageViewerPhotos.length === 0) return
+    setCurrentImageIndex((prev) => (prev + 1) % imageViewerPhotos.length)
+  }
+
+  // 댓글 섹션용: 모든 댓글을 한 번에 가져오기 (Community.tsx와 동일)
+  const fetchAllComments = useCallback(async (postId: string) => {
+    if (!postId || commentLoading) return
+    
+    setCommentLoading(true)
+    
+    try {
+      console.log('댓글 전체 조회 중:', postId)
+      
+      const { data, error } = await supabase
+        .from('comments')
+        .select('*')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true })
+
+      if (error) {
+        console.error('댓글 조회 오류:', error)
+        return
+      }
+
+      console.log('댓글 조회 결과:', data)
+      
+      // 각 댓글 작성자의 프로필 정보 가져오기
+      const commentsWithChildren = await Promise.all((data || []).map(async (comment) => {
+        // user_id로 profiles 조회 (id 또는 auth_user_id 둘 다 시도)
+        let profileData = null
+        
+        // 먼저 id로 조회
+        const { data: profileById } = await supabase
+          .from('profiles')
+          .select('user_type, children_info')
+          .eq('id', comment.user_id)
+          .maybeSingle()
+        
+        if (profileById) {
+          profileData = profileById
+        } else {
+          // id로 못 찾으면 auth_user_id로 조회
+          const { data: profileByAuthId } = await supabase
+            .from('profiles')
+            .select('user_type, children_info')
+            .eq('auth_user_id', comment.user_id)
+            .maybeSingle()
+          
+          profileData = profileByAuthId
+        }
+        
+        const childrenImages = profileData?.user_type === 'parent' && profileData?.children_info
+          ? profileData.children_info.map((child: any) => child.profile_image_url || null)
+          : []
+        
+        return {
+          ...comment,
+          user_children_images: childrenImages,
+          user_type: profileData?.user_type
+        }
+      }))
+      
+      setComments(commentsWithChildren)
+      commentsLoadedRef.current = true // 댓글 로드 완료 표시
+      setHasMoreComments(false) // 모든 댓글을 불러왔으므로 더 이상 없음
+    } catch (error) {
+      console.error('댓글 조회 오류:', error)
+    } finally {
+      setCommentLoading(false)
+    }
+  }, [commentLoading])
+
+  // 댓글 목록 가져오기 (페이지네이션용 - 댓글 모달에서 사용)
   const fetchComments = useCallback(async (postId: string, page: number = 1, append: boolean = false) => {
     if (!postId || (commentLoading && !append) || (loadingMoreComments && append)) return
     
@@ -264,6 +382,7 @@ const PostDetail = () => {
         setComments(prev => [...prev, ...commentsWithChildren])
       } else {
         setComments(commentsWithChildren)
+        commentsLoadedRef.current = true // 댓글 로드 완료 표시
       }
       
       // 더 불러올 댓글이 있는지 확인
@@ -344,15 +463,53 @@ const PostDetail = () => {
     fetchPost()
   }, [postId])
 
-  // 게시글이 로드된 후 댓글 가져오기 (별도 useEffect로 분리)
+  // postId가 변경될 때 댓글 로드 상태 리셋
   useEffect(() => {
-    if (post && postId && !comments.length) {
-      // 댓글이 이미 로드되어 있으면 다시 가져오지 않음
-      setCurrentCommentPage(1)
-      setHasMoreComments(true)
-      fetchComments(postId, 1, false)
+    commentsLoadedRef.current = false
+    setComments([])
+    setCurrentCommentPage(1)
+    setHasMoreComments(true)
+  }, [postId])
+
+  // 게시글이 로드된 후 댓글 가져오기 (별도 useEffect로 분리)
+  // 댓글 최적화: 댓글이 10개 이상일 때는 초기에 불러오지 않음 (사용자가 댓글 섹션을 볼 때만 불러오기)
+  useEffect(() => {
+    if (post && postId && !commentsLoadedRef.current && !commentLoading) {
+      // 댓글이 10개 미만일 때만 초기에 불러오기 (최적화)
+      if (post.comments_count > 0 && post.comments_count < 10) {
+        // 댓글 섹션에서는 모든 댓글을 한 번에 불러오기
+        fetchAllComments(postId)
+      }
+      // 댓글이 10개 이상이면 초기에 불러오지 않음 (사용자가 댓글 섹션을 스크롤하거나 댓글 모달을 열 때만 불러오기)
     }
-  }, [post, postId, comments.length, fetchComments]) // comments.length 추가하여 댓글 수가 변경될 때만 실행
+  }, [post, postId, commentLoading, fetchAllComments]) // fetchAllComments를 dependency에 추가
+
+  // 댓글 섹션이 보일 때 댓글 불러오기 (댓글이 10개 이상일 때만)
+  useEffect(() => {
+    if (!post || !postId || commentsLoadedRef.current || commentLoading) return
+    
+    // 댓글이 10개 이상이고 아직 댓글을 불러오지 않았을 때만
+    if (post.comments_count >= 10 && comments.length === 0) {
+      const commentsSection = document.getElementById('comments-section')
+      if (!commentsSection) return
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0].isIntersecting && !commentsLoadedRef.current && !commentLoading) {
+            // 댓글 섹션에서는 모든 댓글을 한 번에 불러오기
+            fetchAllComments(postId)
+          }
+        },
+        { threshold: 0.1 }
+      )
+
+      observer.observe(commentsSection)
+
+      return () => {
+        observer.disconnect()
+      }
+    }
+  }, [post, postId, comments.length, commentLoading, fetchAllComments])
 
   // 댓글 무한 스크롤을 위한 Intersection Observer
   useEffect(() => {
@@ -575,6 +732,201 @@ const PostDetail = () => {
     }
   }
 
+  // 프로필 사진 전체보기 열기
+  const openProfileImageViewer = (profileImage: string, childrenImages?: string[], user?: { id: string; name: string }) => {
+    // 자녀 사진 필터링 (null, undefined, 빈 문자열 제거)
+    const validChildrenImages = (childrenImages || []).filter(img => img && img.trim() !== '')
+    
+    // 프로필 사진과 자녀 사진이 모두 없는 경우 모달을 열지 않음
+    if (!profileImage && validChildrenImages.length === 0) {
+      return
+    }
+    
+    // 프로필 사진이 있으면 첫 번째로, 없으면 자녀 사진만 사용
+    const allImages = profileImage 
+      ? [profileImage, ...validChildrenImages]
+      : validChildrenImages
+    
+    if (allImages.length === 0) {
+      return
+    }
+    
+    setProfileImageViewerImages(allImages)
+    setCurrentProfileImageIndex(0)
+    setProfileImageViewerUser(user || null)
+    setShowProfileImageViewerMenu(false)
+    setShowProfileImageViewer(true)
+  }
+  
+  // 프로필 사진 전체보기 닫기
+  const closeProfileImageViewer = () => {
+    setShowProfileImageViewer(false)
+    setProfileImageViewerImages([])
+    setCurrentProfileImageIndex(0)
+    setProfileImageViewerUser(null)
+    setShowProfileImageViewerMenu(false)
+  }
+  
+  // 프로필 신고 모달 열기
+  const handleOpenProfileReportModal = () => {
+    setShowProfileReportModal(true)
+    setProfileReportReason('')
+    setProfileReportType('spam')
+    setShowProfileImageViewerMenu(false)
+  }
+  
+  // 프로필 신고 모달 닫기
+  const handleCloseProfileReportModal = () => {
+    setShowProfileReportModal(false)
+    setProfileReportReason('')
+    setProfileReportType('spam')
+  }
+  
+  // 프로필 신고 처리 (중복 신고 허용)
+  const handleSubmitProfileReport = async () => {
+    if (!currentUser || !profileReportReason.trim()) return
+    if (!post && !profileImageViewerUser) return
+    
+    setProfileReportLoading(true)
+    try {
+      const reporterId = currentUser.id
+      
+      // 게시글 작성자 프로필 신고인 경우
+      if (post && !profileImageViewerUser) {
+        const { error } = await supabase
+          .from('reports')
+          .insert({
+            post_id: post.id,
+            reporter_id: reporterId,
+            report_reason: profileReportReason.trim(),
+            report_type: profileReportType,
+            target_type: 'profile' // 프로필 신고임을 명시
+          })
+
+      // 프로필 신고는 중복 허용이므로, UNIQUE 제약조건 위반 에러(409 Conflict)는 성공으로 처리
+      if (error) {
+        const errorMessage = error.message?.toLowerCase() || ''
+        const errorCode = error.code || ''
+        const errorDetails = error.details?.toLowerCase() || ''
+        
+        const isDuplicateError = 
+          errorCode === '23505' || 
+          errorCode === 'PGRST116' || 
+          errorMessage.includes('duplicate') || 
+          errorMessage.includes('unique') ||
+          errorMessage.includes('conflict') ||
+          errorDetails.includes('duplicate') ||
+          errorDetails.includes('unique') ||
+          errorDetails.includes('conflict') ||
+          (error as any)?.status === 409 ||
+          (error as any)?.statusCode === 409
+        
+        if (isDuplicateError) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('중복 신고 감지됨, 성공으로 처리:', error)
+          }
+          alert('신고가 성공적으로 접수되었습니다.')
+          handleCloseProfileReportModal()
+          closeProfileImageViewer()
+          return
+        }
+        console.error('신고 처리 오류:', error)
+        alert('신고 처리 중 오류가 발생했습니다.')
+        return
+      }
+
+        alert('신고가 성공적으로 접수되었습니다.')
+        handleCloseProfileReportModal()
+        closeProfileImageViewer()
+        return
+      }
+      
+      // 댓글/답글 작성자 프로필 신고인 경우
+      if (profileImageViewerUser && post) {
+        const { error } = await supabase
+          .from('reports')
+          .insert({
+            post_id: post.id,
+            reporter_id: reporterId,
+            report_reason: profileReportReason.trim(),
+            report_type: profileReportType,
+            target_type: 'profile', // 프로필 신고임을 명시
+            target_id: profileImageViewerUser.id // 댓글 작성자 ID (target_id 사용)
+          })
+
+        // 프로필 신고는 중복 허용이므로, UNIQUE 제약조건 위반 에러(409 Conflict)는 성공으로 처리
+        if (error) {
+          const errorMessage = error.message?.toLowerCase() || ''
+          const errorCode = error.code || ''
+          const errorDetails = error.details?.toLowerCase() || ''
+          
+          const isDuplicateError = 
+            errorCode === '23505' || 
+            errorCode === 'PGRST116' || 
+            errorMessage.includes('duplicate') || 
+            errorMessage.includes('unique') ||
+            errorMessage.includes('conflict') ||
+            errorDetails.includes('duplicate') ||
+            errorDetails.includes('unique') ||
+            errorDetails.includes('conflict') ||
+            (error as any)?.status === 409 ||
+            (error as any)?.statusCode === 409
+          
+          if (isDuplicateError) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('중복 신고 감지됨, 성공으로 처리:', error)
+            }
+            alert('신고가 성공적으로 접수되었습니다.')
+            handleCloseProfileReportModal()
+            closeProfileImageViewer()
+            return
+          }
+          console.error('신고 처리 오류:', error)
+          alert('신고 처리 중 오류가 발생했습니다.')
+          return
+        }
+
+        alert('신고가 성공적으로 접수되었습니다.')
+        handleCloseProfileReportModal()
+        closeProfileImageViewer()
+        return
+      }
+    } catch (error: any) {
+      const errorMessage = error?.message?.toLowerCase() || ''
+      const errorCode = error?.code || ''
+      
+      const isDuplicateError = 
+        error?.status === 409 ||
+        error?.statusCode === 409 ||
+        errorCode === '23505' || 
+        errorCode === 'PGRST116' ||
+        errorMessage.includes('duplicate') || 
+        errorMessage.includes('unique') ||
+        errorMessage.includes('conflict')
+      
+      if (isDuplicateError) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('중복 신고 감지됨 (catch), 성공으로 처리:', error)
+        }
+        alert('신고가 성공적으로 접수되었습니다.')
+        handleCloseProfileReportModal()
+        closeProfileImageViewer()
+        return
+      }
+      console.error('신고 처리 오류:', error)
+      alert('신고 처리 중 오류가 발생했습니다.')
+    } finally {
+      setProfileReportLoading(false)
+    }
+  }
+  
+  // 프로필 사진 인덱스 변경
+  const setProfileImageIndex = (index: number) => {
+    if (index >= 0 && index < profileImageViewerImages.length) {
+      setCurrentProfileImageIndex(index)
+    }
+  }
+
   const handleEditPost = () => {
     // 수정 페이지로 이동 (구현 예정)
     console.log('수정할 게시글:', post)
@@ -601,13 +953,18 @@ const PostDetail = () => {
   }
 
   // 댓글 모달 열기
-  const handleOpenCommentModal = () => {
+  const handleOpenCommentModal = async () => {
     setShowCommentModal(true)
     setNewComment('')
     // 답글 관련 상태 초기화
     setReplyingToCommentId(null)
     setReplyContent('')
     setShowReplies(new Set())
+    
+    // 댓글 모달을 열 때 댓글 불러오기 (모든 댓글을 한 번에 불러오기)
+    if (postId) {
+      await fetchAllComments(postId)
+    }
   }
 
   // 댓글 모달 닫기
@@ -639,8 +996,13 @@ const PostDetail = () => {
     if (!newComment.trim() || !currentUser || !post) return
 
     try {
-      // OAuth 사용자와 전화번호 가입 사용자 모두 지원
-      const userIdToUse = currentUser.auth_user_id || currentUser.id
+      // comments.user_id는 profiles.auth_user_id를 참조하므로 auth_user_id만 사용
+      const userIdToUse = currentUser.auth_user_id
+      
+      if (!userIdToUse) {
+        console.error('auth_user_id가 없어 댓글을 작성할 수 없습니다.')
+        return
+      }
       
       const { data, error } = await supabase
         .from('comments')
@@ -824,7 +1186,11 @@ const PostDetail = () => {
       console.log('답글 내용:', replyContent.trim())
       console.log('답글 대상 ID:', replyingToCommentId)
       
-      const userIdToUse = currentUser.auth_user_id || currentUser.id
+      // comments.user_id는 profiles.auth_user_id를 참조하므로 auth_user_id만 사용
+      if (!currentUser.auth_user_id) {
+        console.error('auth_user_id가 없어 답글을 작성할 수 없습니다.')
+        return
+      }
       
       // 답글을 달 댓글 정보 가져오기
       const parentComment = comments.find(comment => comment.id === replyingToCommentId)
@@ -834,7 +1200,7 @@ const PostDetail = () => {
         .from('comments')
         .insert({
           post_id: post.id,
-          user_id: userIdToUse,
+          user_id: currentUser.auth_user_id,
           user_name: currentUser.nickname || currentUser.full_name,
           user_profile_image: currentUser.profile_image_url || '',
           content: replyContent.trim(),
@@ -1026,6 +1392,164 @@ const PostDetail = () => {
   // 댓글 메뉴 토글
   const toggleCommentMenu = (commentId: string) => {
     setShowCommentMenu(showCommentMenu === commentId ? null : commentId)
+  }
+
+  // 댓글 작성자 차단
+  const handleBlockCommentAuthor = async (userId: string) => {
+    if (!userId || !currentUser) return
+    setPendingBlockCommentUserId(userId)
+    setShowCommentBlockModal(true)
+    setShowCommentMenu(null)
+  }
+
+  // 댓글 작성자 차단 확인 처리
+  const handleConfirmBlockCommentAuthor = async () => {
+    if (!pendingBlockCommentUserId || !currentUser) return
+    try {
+      const userIdToUse = currentUser.auth_user_id || currentUser.id
+      const { error } = await supabase
+        .from('blocked_users')
+        .insert({
+          blocker_id: userIdToUse,
+          blocked_user_id: pendingBlockCommentUserId,
+          created_at: new Date().toISOString()
+        })
+      if (error) throw error
+      setShowCommentBlockModal(false)
+      setPendingBlockCommentUserId(null)
+      setShowCommentMenu(null)
+      // 차단된 사용자의 댓글을 목록에서 제거
+      setComments(prev => prev.filter(comment => comment.user_id !== pendingBlockCommentUserId))
+      alert('차단되었습니다.')
+    } catch (error) {
+      console.error('차단 처리 중 오류:', error)
+      alert('차단 처리 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 댓글 신고
+  const handleReportComment = async (commentId: string, userId: string) => {
+    setPendingReportComment({ commentId, userId })
+    setShowCommentReportModal(true)
+    setShowCommentMenu(null)
+  }
+
+  // 댓글 신고 제출
+  const handleSubmitCommentReport = async () => {
+    if (!pendingReportComment || !currentUser || !commentReportReason.trim()) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+    try {
+      setCommentReportLoading(true)
+      
+      // 현재 사용자의 profile ID 가져오기
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('로그인이 필요합니다.')
+      
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single()
+      
+      if (profileError || !profileData) {
+        throw new Error('프로필을 찾을 수 없습니다.')
+      }
+      
+      const { error } = await supabase
+        .from('reports')
+        .insert({
+          reporter_id: profileData.id,
+          report_reason: commentReportReason.trim(),
+          report_type: commentReportType,
+          status: 'pending',
+          target_type: 'comment',
+          target_id: pendingReportComment.commentId,
+          post_id: post?.id || null
+        })
+      
+      // 댓글 신고는 중복 허용이므로, UNIQUE 제약조건 위반 에러(409 Conflict)는 성공으로 처리
+      if (error) {
+        const errorMessage = error.message?.toLowerCase() || ''
+        const errorCode = error.code || ''
+        const errorDetails = error.details?.toLowerCase() || ''
+        const errorHint = (error as any)?.hint?.toLowerCase() || ''
+        
+        // 409 Conflict 오류 감지 (더 포괄적으로)
+        const isDuplicateError = 
+          errorCode === '23505' || 
+          errorCode === 'PGRST116' || 
+          errorMessage.includes('duplicate') || 
+          errorMessage.includes('unique') ||
+          errorMessage.includes('conflict') ||
+          errorMessage.includes('already exists') ||
+          errorDetails.includes('duplicate') ||
+          errorDetails.includes('unique') ||
+          errorDetails.includes('conflict') ||
+          errorHint.includes('duplicate') ||
+          errorHint.includes('unique') ||
+          (error as any)?.status === 409 ||
+          (error as any)?.statusCode === 409 ||
+          (error as any)?.statusText === 'Conflict' ||
+          String(error).includes('409') ||
+          String(error).includes('Conflict')
+        
+        if (isDuplicateError) {
+          // 중복 신고는 성공으로 처리
+          alert('신고가 성공적으로 접수되었습니다.')
+          setShowCommentReportModal(false)
+          setPendingReportComment(null)
+          setCommentReportReason('')
+          setCommentReportType('spam')
+          setShowCommentMenu(null)
+          return
+        }
+        console.error('신고 처리 오류:', error)
+        alert('신고 처리 중 오류가 발생했습니다.')
+        return
+      }
+
+      alert('신고가 성공적으로 접수되었습니다.')
+      setShowCommentReportModal(false)
+      setPendingReportComment(null)
+      setCommentReportReason('')
+      setCommentReportType('spam')
+      setShowCommentMenu(null)
+    } catch (error: any) {
+      const errorMessage = error?.message?.toLowerCase() || ''
+      const errorCode = error?.code || ''
+      const errorString = String(error).toLowerCase()
+      
+      // 409 Conflict 오류 감지 (더 포괄적으로)
+      const isDuplicateError = 
+        error?.status === 409 ||
+        error?.statusCode === 409 ||
+        error?.statusText === 'Conflict' ||
+        errorCode === '23505' || 
+        errorCode === 'PGRST116' ||
+        errorMessage.includes('duplicate') || 
+        errorMessage.includes('unique') ||
+        errorMessage.includes('conflict') ||
+        errorMessage.includes('already exists') ||
+        errorString.includes('409') ||
+        errorString.includes('conflict')
+      
+      if (isDuplicateError) {
+        // 중복 신고는 성공으로 처리
+        alert('신고가 성공적으로 접수되었습니다.')
+        setShowCommentReportModal(false)
+        setPendingReportComment(null)
+        setShowCommentMenu(null)
+        setCommentReportReason('')
+        setCommentReportType('spam')
+        return
+      }
+      console.error('댓글 신고 오류:', error)
+      alert('신고 처리 중 오류가 발생했습니다.')
+    } finally {
+      setCommentReportLoading(false)
+    }
   }
 
   // 게시글 신고 처리
@@ -1281,7 +1805,20 @@ const PostDetail = () => {
           {/* Post Header */}
           <div className="flex items-start space-x-3 mb-5">
             <div className="relative">
-              <div className="w-14 h-14 rounded-2xl overflow-hidden shadow-lg">
+              <div 
+                className="w-14 h-14 rounded-2xl overflow-hidden shadow-lg cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                  const hasProfileImage = post.author_profile_image && post.author_profile_image.trim() !== ''
+                  const hasChildrenImages = post.author_children_images && post.author_children_images.length > 0 && 
+                    post.author_children_images.some(img => img && img.trim() !== '')
+                  
+                  if (hasProfileImage || hasChildrenImages) {
+                    openProfileImageViewer(post.author_profile_image || '', post.author_children_images)
+                  }
+                }}
+              >
                 {post.author_profile_image ? (
                   <img
                     src={post.author_profile_image}
@@ -1298,15 +1835,15 @@ const PostDetail = () => {
                           ${post.author_name.charAt(0)}
                         </div>
                       `
-                    }
-                  }}
-                />
-              ) : (
-                <div className="w-full h-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-3xl text-white">
-                  {post.author_name.charAt(0)}
-                </div>
-              )}
-            </div>
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-3xl text-white">
+                    {post.author_name.charAt(0)}
+                  </div>
+                )}
+              </div>
             
             {/* 자녀 프로필 사진 배지 */}
             {post.author_children_images && post.author_children_images.length > 0 && (
@@ -1384,7 +1921,11 @@ const PostDetail = () => {
                   }}
                 >
                   {post.images.map((image, index) => (
-                    <div key={index} className="flex-shrink-0 w-full h-full snap-center">
+                    <div 
+                      key={index} 
+                      className="flex-shrink-0 w-full h-full snap-center cursor-pointer"
+                      onClick={() => openImageViewer(post.images, index)}
+                    >
                       <img
                         src={image}
                         alt={`게시글 이미지 ${index + 1}`}
@@ -1456,7 +1997,7 @@ const PostDetail = () => {
         </div>
 
         {/* Comments Section */}
-        <div className="mt-6 bg-white/90 backdrop-blur-sm rounded-t-2xl p-6 border border-white/50 shadow-lg flex-1 flex flex-col">
+        <div id="comments-section" className="mt-6 bg-white/90 backdrop-blur-sm rounded-t-2xl p-6 border border-white/50 shadow-lg flex-1 flex flex-col">
           <h3 className="text-lg font-bold text-gray-900 mb-4 flex-shrink-0">댓글 {post.comments_count}개</h3>
           <div className="space-y-4 flex-1">
             {commentLoading ? (
@@ -1476,8 +2017,23 @@ const PostDetail = () => {
                   <div className="flex space-x-3">
                     <div className="relative w-10 h-10">
                       <div 
-                        className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium"
+                        className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer"
                         style={{ borderRadius: '12px' }}
+                        onClick={(e) => {
+                          e.stopPropagation() // 댓글 클릭 이벤트 전파 방지
+                          // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                          const hasProfileImage = comment.user_profile_image && comment.user_profile_image.trim() !== ''
+                          const hasChildrenImages = comment.user_children_images && comment.user_children_images.length > 0 && 
+                            comment.user_children_images.some(img => img && img.trim() !== '')
+                          
+                          if (hasProfileImage || hasChildrenImages) {
+                            openProfileImageViewer(
+                              comment.user_profile_image || '', 
+                              comment.user_children_images,
+                              { id: comment.user_id, name: comment.user_name }
+                            )
+                          }
+                        }}
                       >
                         {comment.user_profile_image ? (
                           <img
@@ -1572,33 +2128,52 @@ const PostDetail = () => {
                           </span>
                         </div>
                         
-                        {/* 자신이 작성한 댓글에만 점3개 메뉴 표시 (삭제된 댓글 제외) */}
-                        {currentUser && !comment.is_deleted && (comment.user_id === currentUser.id || comment.user_id === currentUser.auth_user_id) && (
+                        {/* 점3개 메뉴 표시 (삭제된 댓글 제외) */}
+                        {currentUser && !comment.is_deleted && (
                           <div className="relative">
                             <button
                               onClick={() => toggleCommentMenu(comment.id)}
                               className="p-1 rounded-full hover:bg-gray-100 transition-colors"
                             >
-                              <MoreVertical className="w-4 h-4 text-gray-500" />
+                              <MoreVertical className="w-4 h-4 text-[#fb8678]" />
                             </button>
                             
                             {/* 댓글 메뉴 드롭다운 */}
                             {showCommentMenu === comment.id && (
                               <div className="absolute right-0 top-8 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                <button
-                                  onClick={() => handleStartEditComment(comment)}
-                                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                >
-                                  <Edit className="w-4 h-4" />
-                                  <span>수정</span>
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteComment(comment.id)}
-                                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                  <span>삭제</span>
-                                </button>
+                                {comment.user_id === currentUser.id || comment.user_id === currentUser.auth_user_id ? (
+                                  <>
+                                    <button
+                                      onClick={() => handleStartEditComment(comment)}
+                                      className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      수정하기
+                                    </button>
+                                    <div className="border-t border-gray-200 mx-2"></div>
+                                    <button
+                                      onClick={() => handleDeleteComment(comment.id)}
+                                      className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                    >
+                                      삭제하기
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleBlockCommentAuthor(comment.user_id)}
+                                      className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                      차단하기
+                                    </button>
+                                    <div className="border-t border-gray-200 mx-2"></div>
+                                    <button
+                                      onClick={() => handleReportComment(comment.id, comment.user_id)}
+                                      className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                    >
+                                      신고하기
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1700,8 +2275,23 @@ const PostDetail = () => {
                             <div key={reply.id} className="flex space-x-3">
                               <div className="relative w-6 h-6">
                                 <div 
-                                  className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium"
+                                  className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
                                   style={{ borderRadius: '8px' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation() // 답글 클릭 이벤트 전파 방지
+                                    // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                                    const hasProfileImage = reply.user_profile_image && reply.user_profile_image.trim() !== ''
+                                    const hasChildrenImages = reply.user_children_images && reply.user_children_images.length > 0 && 
+                                      reply.user_children_images.some(img => img && img.trim() !== '')
+                                    
+                                    if (hasProfileImage || hasChildrenImages) {
+                                      openProfileImageViewer(
+                                        reply.user_profile_image || '', 
+                                        reply.user_children_images,
+                                        { id: reply.user_id, name: reply.user_name }
+                                      )
+                                    }
+                                  }}
                                 >
                                   {reply.user_profile_image ? (
                                     <img
@@ -1796,33 +2386,52 @@ const PostDetail = () => {
                                     </span>
                                   </div>
                                   
-                                  {/* 자신이 작성한 답글에만 점3개 메뉴 표시 */}
-                                  {currentUser && !reply.is_deleted && (reply.user_id === currentUser.id || reply.user_id === currentUser.auth_user_id) && (
+                                  {/* 점3개 메뉴 표시 (삭제된 답글 제외) */}
+                                  {currentUser && !reply.is_deleted && (
                                     <div className="relative">
                                       <button
                                         onClick={() => toggleCommentMenu(reply.id)}
                                         className="p-1 rounded-full hover:bg-gray-100 transition-colors"
                                       >
-                                        <MoreVertical className="w-3 h-3 text-gray-500" />
+                                        <MoreVertical className="w-3 h-3 text-[#fb8678]" />
                                       </button>
                                       
                                       {/* 답글 메뉴 드롭다운 */}
                                       {showCommentMenu === reply.id && (
                                         <div className="absolute right-0 top-6 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                          <button
-                                            onClick={() => handleStartEditComment(reply)}
-                                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                          >
-                                            <Edit className="w-4 h-4" />
-                                            <span>수정</span>
-                                          </button>
-                                          <button
-                                            onClick={() => handleDeleteComment(reply.id)}
-                                            className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                          >
-                                            <Trash2 className="w-4 h-4" />
-                                            <span>삭제</span>
-                                          </button>
+                                          {reply.user_id === currentUser.id || reply.user_id === currentUser.auth_user_id ? (
+                                            <>
+                                              <button
+                                                onClick={() => handleStartEditComment(reply)}
+                                                className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                              >
+                                                수정하기
+                                              </button>
+                                              <div className="border-t border-gray-200 mx-2"></div>
+                                              <button
+                                                onClick={() => handleDeleteComment(reply.id)}
+                                                className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                              >
+                                                삭제하기
+                                              </button>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <button
+                                                onClick={() => handleBlockCommentAuthor(reply.user_id)}
+                                                className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                              >
+                                                차단하기
+                                              </button>
+                                              <div className="border-t border-gray-200 mx-2"></div>
+                                              <button
+                                                onClick={() => handleReportComment(reply.id, reply.user_id)}
+                                                className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                              >
+                                                신고하기
+                                              </button>
+                                            </>
+                                          )}
                                         </div>
                                       )}
                                     </div>
@@ -1910,19 +2519,36 @@ const PostDetail = () => {
                                   const parentReply = replies.find(reply => reply.id === nestedReply.parent_id)
                                   return (
                                     <div key={nestedReply.id} className="flex space-x-3">
-                                      <div 
-                                        className="w-6 h-6 overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium"
-                                        style={{ borderRadius: '8px' }}
-                                      >
-                                        {nestedReply.user_profile_image ? (
-                                          <img
-                                            src={nestedReply.user_profile_image}
-                                            alt={`${nestedReply.user_name}의 프로필`}
-                                            className="w-full h-full object-cover"
-                                          />
-                                        ) : (
-                                          nestedReply.user_name.charAt(0)
-                                        )}
+                                      <div className="relative w-6 h-6">
+                                        <div 
+                                          className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
+                                          style={{ borderRadius: '8px' }}
+                                          onClick={(e) => {
+                                            e.stopPropagation() // 답글 클릭 이벤트 전파 방지
+                                            // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                                            const hasProfileImage = nestedReply.user_profile_image && nestedReply.user_profile_image.trim() !== ''
+                                            const hasChildrenImages = nestedReply.user_children_images && nestedReply.user_children_images.length > 0 && 
+                                              nestedReply.user_children_images.some(img => img && img.trim() !== '')
+                                            
+                                            if (hasProfileImage || hasChildrenImages) {
+                                              openProfileImageViewer(
+                                                nestedReply.user_profile_image || '', 
+                                                nestedReply.user_children_images,
+                                                { id: nestedReply.user_id, name: nestedReply.user_name }
+                                              )
+                                            }
+                                          }}
+                                        >
+                                          {nestedReply.user_profile_image ? (
+                                            <img
+                                              src={nestedReply.user_profile_image}
+                                              alt={`${nestedReply.user_name}의 프로필`}
+                                              className="w-full h-full object-cover"
+                                            />
+                                          ) : (
+                                            nestedReply.user_name.charAt(0)
+                                          )}
+                                        </div>
                                       </div>
                                       <div className="flex-1">
                                         <div className="flex items-center justify-between mb-1">
@@ -1938,33 +2564,52 @@ const PostDetail = () => {
                                             </span>
                                           </div>
                                           
-                                          {/* 자신이 작성한 답글에만 점3개 메뉴 표시 */}
-                                          {currentUser && !nestedReply.is_deleted && (nestedReply.user_id === currentUser.id || nestedReply.user_id === currentUser.auth_user_id) && (
+                                          {/* 점3개 메뉴 표시 (삭제된 답글 제외) */}
+                                          {currentUser && !nestedReply.is_deleted && (
                                             <div className="relative">
                                               <button
                                                 onClick={() => toggleCommentMenu(nestedReply.id)}
                                                 className="p-1 rounded-full hover:bg-gray-100 transition-colors"
                                               >
-                                                <MoreVertical className="w-3 h-3 text-gray-500" />
+                                                <MoreVertical className="w-3 h-3 text-[#fb8678]" />
                                               </button>
                                               
                                               {/* 답글 메뉴 드롭다운 */}
                                               {showCommentMenu === nestedReply.id && (
                                                 <div className="absolute right-0 top-6 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                                  <button
-                                                    onClick={() => handleStartEditComment(nestedReply)}
-                                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                                  >
-                                                    <Edit className="w-4 h-4" />
-                                                    <span>수정</span>
-                                                  </button>
-                                                  <button
-                                                    onClick={() => handleDeleteComment(nestedReply.id)}
-                                                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                                  >
-                                                    <Trash2 className="w-4 h-4" />
-                                                    <span>삭제</span>
-                                                  </button>
+                                                  {nestedReply.user_id === currentUser.id || nestedReply.user_id === currentUser.auth_user_id ? (
+                                                    <>
+                                                      <button
+                                                        onClick={() => handleStartEditComment(nestedReply)}
+                                                        className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                      >
+                                                        수정하기
+                                                      </button>
+                                                      <div className="border-t border-gray-200 mx-2"></div>
+                                                      <button
+                                                        onClick={() => handleDeleteComment(nestedReply.id)}
+                                                        className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                      >
+                                                        삭제하기
+                                                      </button>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <button
+                                                        onClick={() => handleBlockCommentAuthor(nestedReply.user_id)}
+                                                        className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                      >
+                                                        차단하기
+                                                      </button>
+                                                      <div className="border-t border-gray-200 mx-2"></div>
+                                                      <button
+                                                        onClick={() => handleReportComment(nestedReply.id, nestedReply.user_id)}
+                                                        className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                      >
+                                                        신고하기
+                                                      </button>
+                                                    </>
+                                                  )}
                                                 </div>
                                               )}
                                             </div>
@@ -2094,6 +2739,7 @@ const PostDetail = () => {
                 >
                   <option value="spam">스팸/광고성 게시글</option>
                   <option value="inappropriate">부적절한 내용</option>
+                  <option value="inappropriate_image">부적절한 이미지 사용</option>
                   <option value="harassment">괴롭힘/폭력</option>
                   <option value="other">기타</option>
                 </select>
@@ -2212,8 +2858,23 @@ const PostDetail = () => {
                       <div className="flex space-x-3">
                         <div className="relative w-8 h-8">
                           <div 
-                            className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium"
+                            className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer"
                             style={{ borderRadius: '12px' }}
+                            onClick={(e) => {
+                              e.stopPropagation() // 댓글 클릭 이벤트 전파 방지
+                              // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                              const hasProfileImage = comment.user_profile_image && comment.user_profile_image.trim() !== ''
+                              const hasChildrenImages = comment.user_children_images && comment.user_children_images.length > 0 && 
+                                comment.user_children_images.some(img => img && img.trim() !== '')
+                              
+                              if (hasProfileImage || hasChildrenImages) {
+                                openProfileImageViewer(
+                                  comment.user_profile_image || '', 
+                                  comment.user_children_images,
+                                  { id: comment.user_id, name: comment.user_name }
+                                )
+                              }
+                            }}
                           >
                             {comment.user_profile_image ? (
                               <img
@@ -2308,33 +2969,52 @@ const PostDetail = () => {
                               </span>
                             </div>
                             
-                            {/* 자신이 작성한 댓글에만 점3개 메뉴 표시 (삭제된 댓글 제외) */}
-                            {currentUser && !comment.is_deleted && (comment.user_id === currentUser.id || comment.user_id === currentUser.auth_user_id) && (
+                            {/* 점3개 메뉴 표시 (삭제된 댓글 제외) */}
+                            {currentUser && !comment.is_deleted && (
                               <div className="relative">
                                 <button
                                   onClick={() => toggleCommentMenu(comment.id)}
                                   className="p-1 rounded-full hover:bg-gray-100 transition-colors"
                                 >
-                                  <MoreVertical className="w-4 h-4 text-gray-500" />
+                                  <MoreVertical className="w-4 h-4 text-[#fb8678]" />
                                 </button>
                                 
                                 {/* 댓글 메뉴 드롭다운 */}
                                 {showCommentMenu === comment.id && (
                                   <div className="absolute right-0 top-8 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                    <button
-                                      onClick={() => handleStartEditComment(comment)}
-                                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                    >
-                                      <Edit className="w-4 h-4" />
-                                      <span>수정</span>
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteComment(comment.id)}
-                                      className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                      <span>삭제</span>
-                                    </button>
+                                    {comment.user_id === currentUser.id || comment.user_id === currentUser.auth_user_id ? (
+                                      <>
+                                        <button
+                                          onClick={() => handleStartEditComment(comment)}
+                                          className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                        >
+                                          수정하기
+                                        </button>
+                                        <div className="border-t border-gray-200 mx-2"></div>
+                                        <button
+                                          onClick={() => handleDeleteComment(comment.id)}
+                                          className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                        >
+                                          삭제하기
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={() => handleBlockCommentAuthor(comment.user_id)}
+                                          className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                        >
+                                          차단하기
+                                        </button>
+                                        <div className="border-t border-gray-200 mx-2"></div>
+                                        <button
+                                          onClick={() => handleReportComment(comment.id, comment.user_id)}
+                                          className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                        >
+                                          신고하기
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -2438,8 +3118,23 @@ const PostDetail = () => {
                                 <div key={reply.id} className="flex space-x-3">
                                   <div className="relative w-6 h-6">
                                     <div 
-                                      className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium"
+                                      className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
                                       style={{ borderRadius: '8px' }}
+                                      onClick={(e) => {
+                                        e.stopPropagation() // 답글 클릭 이벤트 전파 방지
+                                        // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                                        const hasProfileImage = reply.user_profile_image && reply.user_profile_image.trim() !== ''
+                                        const hasChildrenImages = reply.user_children_images && reply.user_children_images.length > 0 && 
+                                          reply.user_children_images.some(img => img && img.trim() !== '')
+                                        
+                                        if (hasProfileImage || hasChildrenImages) {
+                                          openProfileImageViewer(
+                                            reply.user_profile_image || '', 
+                                            reply.user_children_images,
+                                            { id: reply.user_id, name: reply.user_name }
+                                          )
+                                        }
+                                      }}
                                     >
                                       {reply.user_profile_image ? (
                                         <img
@@ -2534,33 +3229,52 @@ const PostDetail = () => {
                                         </span>
                                       </div>
                                       
-                                      {/* 자신이 작성한 답글에만 점3개 메뉴 표시 */}
-                                      {currentUser && !reply.is_deleted && (reply.user_id === currentUser.id || reply.user_id === currentUser.auth_user_id) && (
+                                      {/* 점3개 메뉴 표시 (삭제된 답글 제외) */}
+                                      {currentUser && !reply.is_deleted && (
                                         <div className="relative">
                                           <button
                                             onClick={() => toggleCommentMenu(reply.id)}
                                             className="p-1 rounded-full hover:bg-gray-100 transition-colors"
                                           >
-                                            <MoreVertical className="w-3 h-3 text-gray-500" />
+                                            <MoreVertical className="w-3 h-3 text-[#fb8678]" />
                                           </button>
                                           
                                           {/* 답글 메뉴 드롭다운 */}
                                           {showCommentMenu === reply.id && (
                                             <div className="absolute right-0 top-6 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                              <button
-                                                onClick={() => handleStartEditComment(reply)}
-                                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                              >
-                                                <Edit className="w-4 h-4" />
-                                                <span>수정</span>
-                                              </button>
-                                              <button
-                                                onClick={() => handleDeleteComment(reply.id)}
-                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                              >
-                                                <Trash2 className="w-4 h-4" />
-                                                <span>삭제</span>
-                                              </button>
+                                              {reply.user_id === currentUser.id || reply.user_id === currentUser.auth_user_id ? (
+                                                <>
+                                                  <button
+                                                    onClick={() => handleStartEditComment(reply)}
+                                                    className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                  >
+                                                    수정하기
+                                                  </button>
+                                                  <div className="border-t border-gray-200 mx-2"></div>
+                                                  <button
+                                                    onClick={() => handleDeleteComment(reply.id)}
+                                                    className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                  >
+                                                    삭제하기
+                                                  </button>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <button
+                                                    onClick={() => handleBlockCommentAuthor(reply.user_id)}
+                                                    className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                  >
+                                                    차단하기
+                                                  </button>
+                                                  <div className="border-t border-gray-200 mx-2"></div>
+                                                  <button
+                                                    onClick={() => handleReportComment(reply.id, reply.user_id)}
+                                                    className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                  >
+                                                    신고하기
+                                                  </button>
+                                                </>
+                                              )}
                                             </div>
                                           )}
                                         </div>
@@ -2649,19 +3363,36 @@ const PostDetail = () => {
                                       const parentReply = replies.find(reply => reply.id === nestedReply.parent_id)
                                       return (
                                         <div key={nestedReply.id} className="flex space-x-3">
-                                          <div 
-                                            className="w-6 h-6 overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium"
-                                            style={{ borderRadius: '8px' }}
-                                          >
-                                            {nestedReply.user_profile_image ? (
-                                              <img
-                                                src={nestedReply.user_profile_image}
-                                                alt={`${nestedReply.user_name}의 프로필`}
-                                                className="w-full h-full object-cover"
-                                              />
-                                            ) : (
-                                              nestedReply.user_name.charAt(0)
-                                            )}
+                                          <div className="relative w-6 h-6">
+                                            <div 
+                                              className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
+                                              style={{ borderRadius: '8px' }}
+                                              onClick={(e) => {
+                                                e.stopPropagation() // 답글 클릭 이벤트 전파 방지
+                                                // 프로필 사진이 있거나 자녀 사진이 있는 경우에만 모달 열기
+                                                const hasProfileImage = nestedReply.user_profile_image && nestedReply.user_profile_image.trim() !== ''
+                                                const hasChildrenImages = nestedReply.user_children_images && nestedReply.user_children_images.length > 0 && 
+                                                  nestedReply.user_children_images.some(img => img && img.trim() !== '')
+                                                
+                                                if (hasProfileImage || hasChildrenImages) {
+                                                  openProfileImageViewer(
+                                                    nestedReply.user_profile_image || '', 
+                                                    nestedReply.user_children_images,
+                                                    { id: nestedReply.user_id, name: nestedReply.user_name }
+                                                  )
+                                                }
+                                              }}
+                                            >
+                                              {nestedReply.user_profile_image ? (
+                                                <img
+                                                  src={nestedReply.user_profile_image}
+                                                  alt={`${nestedReply.user_name}의 프로필`}
+                                                  className="w-full h-full object-cover"
+                                                />
+                                              ) : (
+                                                nestedReply.user_name.charAt(0)
+                                              )}
+                                            </div>
                                           </div>
                                           <div className="flex-1">
                                             <div className="flex items-center justify-between mb-1">
@@ -2677,33 +3408,52 @@ const PostDetail = () => {
                                                 </span>
                                               </div>
                                               
-                                              {/* 자신이 작성한 답글에만 점3개 메뉴 표시 */}
-                                              {currentUser && !nestedReply.is_deleted && (nestedReply.user_id === currentUser.id || nestedReply.user_id === currentUser.auth_user_id) && (
+                                              {/* 점3개 메뉴 표시 (삭제된 답글 제외) */}
+                                              {currentUser && !nestedReply.is_deleted && (
                                                 <div className="relative">
                                                   <button
                                                     onClick={() => toggleCommentMenu(nestedReply.id)}
                                                     className="p-1 rounded-full hover:bg-gray-100 transition-colors"
                                                   >
-                                                    <MoreVertical className="w-3 h-3 text-gray-500" />
+                                                    <MoreVertical className="w-3 h-3 text-[#fb8678]" />
                                                   </button>
                                                   
                                                   {/* 답글 메뉴 드롭다운 */}
                                                   {showCommentMenu === nestedReply.id && (
                                                     <div className="absolute right-0 top-6 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[100px]">
-                                                      <button
-                                                        onClick={() => handleStartEditComment(nestedReply)}
-                                                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                                      >
-                                                        <Edit className="w-4 h-4" />
-                                                        <span>수정</span>
-                                                      </button>
-                                                      <button
-                                                        onClick={() => handleDeleteComment(nestedReply.id)}
-                                                        className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                                      >
-                                                        <Trash2 className="w-4 h-4" />
-                                                        <span>삭제</span>
-                                                      </button>
+                                                      {nestedReply.user_id === currentUser.id || nestedReply.user_id === currentUser.auth_user_id ? (
+                                                        <>
+                                                          <button
+                                                            onClick={() => handleStartEditComment(nestedReply)}
+                                                            className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                          >
+                                                            수정하기
+                                                          </button>
+                                                          <div className="border-t border-gray-200 mx-2"></div>
+                                                          <button
+                                                            onClick={() => handleDeleteComment(nestedReply.id)}
+                                                            className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                          >
+                                                            삭제하기
+                                                          </button>
+                                                        </>
+                                                      ) : (
+                                                        <>
+                                                          <button
+                                                            onClick={() => handleBlockCommentAuthor(nestedReply.user_id)}
+                                                            className="w-full px-4 py-2 text-center text-sm text-gray-700 hover:bg-gray-50"
+                                                          >
+                                                            차단하기
+                                                          </button>
+                                                          <div className="border-t border-gray-200 mx-2"></div>
+                                                          <button
+                                                            onClick={() => handleReportComment(nestedReply.id, nestedReply.user_id)}
+                                                            className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                                                          >
+                                                            신고하기
+                                                          </button>
+                                                        </>
+                                                      )}
                                                     </div>
                                                   )}
                                                 </div>
@@ -2771,24 +3521,6 @@ const PostDetail = () => {
                       )}
                     </div>
                   ))}
-                  
-                  {/* 무한 스크롤 Sentinel 및 로딩 인디케이터 */}
-                  {!commentLoading && comments.length > 0 && (
-                    <>
-                      <div id="comments-sentinel" className="h-1" />
-                      {loadingMoreComments && (
-                        <div className="text-center py-4">
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#fb8678] mx-auto mb-2"></div>
-                          <p className="text-gray-500 text-xs">댓글을 불러오는 중...</p>
-                        </div>
-                      )}
-                      {!hasMoreComments && comments.length >= commentsPerPage && (
-                        <div className="text-center py-4">
-                          <p className="text-gray-500 text-xs">모든 댓글을 불러왔습니다.</p>
-                        </div>
-                      )}
-                    </>
-                  )}
                 </div>
               )}
             </div>
@@ -2816,6 +3548,400 @@ const PostDetail = () => {
                   게시
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 이미지 전체보기 뷰어 */}
+      {showImageViewer && imageViewerPhotos.length > 0 && (
+        <div 
+          className="fixed inset-0 bg-black z-50 flex items-center justify-center"
+          onClick={closeImageViewer}
+        >
+          {/* 닫기 버튼 */}
+          <button
+            onClick={closeImageViewer}
+            className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/10 text-white z-10"
+            aria-label="닫기"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* 이전 버튼 */}
+          {imageViewerPhotos.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                goPrevImage()
+              }}
+              className="absolute left-2 sm:left-4 p-3 rounded-full hover:bg-white/10 text-white z-10"
+              aria-label="이전 이미지"
+            >
+              <ChevronLeft className="w-7 h-7" />
+            </button>
+          )}
+
+          {/* 이미지 */}
+          <div 
+            className="max-w-full max-h-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={imageViewerPhotos[currentImageIndex]}
+              alt={`게시글 이미지 ${currentImageIndex + 1}`}
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+            {imageViewerPhotos.length > 1 && (
+              <div className="mt-3 text-center text-xs text-white/70">
+                {currentImageIndex + 1} / {imageViewerPhotos.length}
+              </div>
+            )}
+          </div>
+
+          {/* 다음 버튼 */}
+          {imageViewerPhotos.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                goNextImage()
+              }}
+              className="absolute right-2 sm:right-4 p-3 rounded-full hover:bg-white/10 text-white z-10"
+              aria-label="다음 이미지"
+            >
+              <ChevronRight className="w-7 h-7" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* 프로필 사진 전체보기 뷰어 */}
+      {showProfileImageViewer && profileImageViewerImages.length > 0 && (
+        <div 
+          className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center"
+          onClick={(e) => {
+            // 메뉴 외부 클릭 시 메뉴 닫기
+            if (!(e.target as Element).closest('.profile-image-viewer-menu-container')) {
+              setShowProfileImageViewerMenu(false)
+            }
+            // 배경 클릭 시 모달 닫기 (메뉴가 열려있지 않을 때만)
+            if (!showProfileImageViewerMenu) {
+              closeProfileImageViewer()
+            }
+          }}
+        >
+          {/* 닫기 버튼 */}
+          <button
+            onClick={closeProfileImageViewer}
+            className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/10 text-white z-10"
+            aria-label="닫기"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* 점 3개 메뉴 버튼 (본인 프로필이 아닐 때만 표시) */}
+          {currentUser && (() => {
+            // 게시글 작성자인 경우
+            if (post && post.author_name === (currentUser.nickname || currentUser.full_name)) {
+              return false
+            }
+            // 댓글/답글 작성자인 경우
+            if (profileImageViewerUser) {
+              const isSameName = profileImageViewerUser.name === (currentUser.nickname || currentUser.full_name)
+              const isSameId = profileImageViewerUser.id === currentUser.auth_user_id
+              if (isSameName || isSameId) {
+                return false
+              }
+            }
+            // 본인이 아니면 점3개 표시
+            return true
+          })() && (
+            <div className="absolute top-4 right-16 profile-image-viewer-menu-container z-10">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowProfileImageViewerMenu(!showProfileImageViewerMenu)
+                }}
+                className="p-2 rounded-full hover:bg-white/10 text-white"
+                aria-label="옵션 메뉴"
+              >
+                <MoreHorizontal className="w-6 h-6" />
+              </button>
+              {showProfileImageViewerMenu && (
+                <div className="absolute right-0 top-10 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[120px]">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleOpenProfileReportModal()
+                    }}
+                    className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                  >
+                    신고하기
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 이전 버튼 */}
+          {profileImageViewerImages.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setProfileImageIndex((currentProfileImageIndex - 1 + profileImageViewerImages.length) % profileImageViewerImages.length)
+              }}
+              className="absolute left-2 sm:left-4 p-3 rounded-full hover:bg-white/10 text-white z-10"
+              aria-label="이전 이미지"
+            >
+              <ChevronLeft className="w-7 h-7" />
+            </button>
+          )}
+
+          {/* 이미지 */}
+          <div 
+            className="flex-1 flex items-center justify-center max-w-full max-h-full px-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={profileImageViewerImages[currentProfileImageIndex]}
+              alt={`프로필 사진 ${currentProfileImageIndex === 0 ? '본인' : `자녀 ${currentProfileImageIndex}`}`}
+              className="max-w-full max-h-[70vh] object-contain"
+            />
+          </div>
+
+          {/* 다음 버튼 */}
+          {profileImageViewerImages.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setProfileImageIndex((currentProfileImageIndex + 1) % profileImageViewerImages.length)
+              }}
+              className="absolute right-2 sm:right-4 p-3 rounded-full hover:bg-white/10 text-white z-10"
+              aria-label="다음 이미지"
+            >
+              <ChevronRight className="w-7 h-7" />
+            </button>
+          )}
+
+          {/* 자녀 사진 썸네일 (아래쪽에 원형으로 표시) */}
+          {profileImageViewerImages.length > 1 && (
+            <div 
+              className="absolute bottom-8 left-0 right-0 flex justify-center gap-3 px-4 pb-4 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {profileImageViewerImages.map((image, index) => (
+                <button
+                  key={index}
+                  onClick={() => setProfileImageIndex(index)}
+                  className={`w-12 h-12 rounded-full overflow-hidden border-2 transition-all ${
+                    currentProfileImageIndex === index
+                      ? 'border-white scale-110 shadow-lg'
+                      : 'border-white/50 opacity-70 hover:opacity-100 hover:scale-105'
+                  }`}
+                  aria-label={index === 0 ? '본인 프로필' : `자녀 ${index} 프로필`}
+                >
+                  <img
+                    src={image}
+                    alt={index === 0 ? '본인 프로필' : `자녀 ${index} 프로필`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 프로필 신고 모달 */}
+      {showProfileReportModal && (post || profileImageViewerUser) && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl p-4 max-w-lg w-full min-h-[500px] max-h-[95vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">프로필 신고</h3>
+              <button
+                onClick={handleCloseProfileReportModal}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto mb-6">
+              <p className="text-gray-600 text-sm mb-4">
+                <strong>{post?.author_name || profileImageViewerUser?.name}</strong>님의 프로필을 신고합니다.
+              </p>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 유형
+                </label>
+                <select
+                  value={profileReportType}
+                  onChange={(e) => setProfileReportType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent"
+                >
+                  <option value="spam">스팸/광고성 게시글</option>
+                  <option value="inappropriate">부적절한 내용</option>
+                  <option value="inappropriate_image">부적절한 이미지 사용</option>
+                  <option value="harassment">괴롭힘/폭력</option>
+                  <option value="other">기타</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 사유
+                </label>
+                <textarea
+                  value={profileReportReason}
+                  onChange={(e) => setProfileReportReason(e.target.value)}
+                  placeholder="신고 사유를 구체적으로 작성해주세요..."
+                  rows={6}
+                  maxLength={500}
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent resize-none text-sm"
+                />
+                <div className="flex justify-between text-xs text-gray-400 font-semibold mt-1">
+                  <span>최대 텍스트 길이</span>
+                  <span>{profileReportReason.length}/500</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 flex-shrink-0">
+              <button
+                onClick={handleCloseProfileReportModal}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSubmitProfileReport}
+                disabled={!profileReportReason.trim() || profileReportLoading}
+                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {profileReportLoading ? '신고 중...' : '신고하기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 댓글 차단 모달 */}
+      {showCommentBlockModal && pendingBlockCommentUserId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-6 h-6 text-red-600" />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 mb-2">
+                사용자를 차단하시겠습니까?
+              </h2>
+              <div className="text-sm text-gray-600 text-left space-y-2">
+                <p>• 차단하면 해당 사용자의 댓글이 더 이상 보이지 않습니다.</p>
+                <p>• 상대방은 회원님의 글을 계속 볼 수 있습니다.</p>
+                <p>• 정말 차단하시겠습니까?</p>
+              </div>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={() => {
+                  setShowCommentBlockModal(false)
+                  setPendingBlockCommentUserId(null)
+                }}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleConfirmBlockCommentAuthor}
+                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium"
+              >
+                차단하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 댓글 신고 모달 */}
+      {showCommentReportModal && pendingReportComment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-4 max-w-lg w-full min-h-[500px] max-h-[95vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">댓글 신고</h3>
+              <button
+                onClick={() => {
+                  setShowCommentReportModal(false)
+                  setPendingReportComment(null)
+                  setCommentReportReason('')
+                  setCommentReportType('spam')
+                }}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto mb-6">
+              <p className="text-gray-600 text-sm mb-4">
+                선택한 댓글을 신고합니다.
+              </p>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 유형
+                </label>
+                <select
+                  value={commentReportType}
+                  onChange={(e) => setCommentReportType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent"
+                >
+                  <option value="spam">스팸/광고성 게시글</option>
+                  <option value="inappropriate">부적절한 내용</option>
+                  <option value="harassment">괴롭힘/폭력</option>
+                  <option value="other">기타</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 사유
+                </label>
+                <textarea
+                  value={commentReportReason}
+                  onChange={(e) => setCommentReportReason(e.target.value)}
+                  placeholder="신고 사유를 구체적으로 작성해주세요..."
+                  rows={6}
+                  maxLength={500}
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent resize-none text-sm"
+                />
+                <div className="flex justify-between text-xs text-gray-400 font-semibold mt-1">
+                  <span>최대 텍스트 길이</span>
+                  <span>{commentReportReason.length}/500</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 flex-shrink-0">
+              <button
+                onClick={() => {
+                  setShowCommentReportModal(false)
+                  setPendingReportComment(null)
+                  setCommentReportReason('')
+                  setCommentReportType('spam')
+                }}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSubmitCommentReport}
+                disabled={commentReportLoading || !commentReportReason.trim()}
+                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {commentReportLoading ? '신고 중...' : '신고하기'}
+              </button>
             </div>
           </div>
         </div>

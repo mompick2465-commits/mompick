@@ -375,6 +375,14 @@ export const createReviewLikeNotification = async (
 
     console.log('리뷰 좋아요 알림 생성 성공:', data)
 
+    // 사용자 알림 설정 확인
+    const canReceive = await canReceiveNotification(targetProfileId, 'review_like')
+    if (!canReceive) {
+      console.log('사용자가 review_like 알림을 받지 않도록 설정했습니다. FCM 전송을 건너뜁니다.')
+      // 알림은 DB에 저장되지만 FCM은 전송하지 않음
+      return data
+    }
+
     // FCM 푸시 알림 전송 (비동기, 실패해도 알림은 생성됨)
     const notificationTitle = `${fromUserName}님이 하트를 눌렀습니다`
     const notificationBody = `${kindergartenName} 칭찬에 ${fromUserName}님이 하트를 눌렀습니다.`

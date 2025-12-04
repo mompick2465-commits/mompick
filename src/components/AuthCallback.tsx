@@ -148,7 +148,7 @@ const AuthCallback = () => {
               }, 2500)
             }
           } else {
-            // 프로필이 완성되지 않은 경우 프로필 입력 단계로
+            // 프로필이 완성되지 않은 경우 약관 동의 단계로 (신규 사용자)
             let providerName = '소셜'
             if (provider === 'kakao') providerName = '카카오톡'
             else if (provider === 'google') providerName = '구글'
@@ -156,11 +156,11 @@ const AuthCallback = () => {
             
             if (isMounted) {
               setStatus('success')
-              setMessage(`${providerName} 계정 연동되었습니다! 프로필을 완성해주세요.`)
+              setMessage(`${providerName} 계정 연동되었습니다! 약관에 동의해주세요.`)
               
               setTimeout(() => {
                 if (isMounted) {
-                  navigate('/signup?step=type&oauth=success')
+                  navigate('/signup?step=terms&oauth=success')
                 }
               }, 2500)
             }

@@ -21,7 +21,8 @@ import {
   AlertCircle,
   Megaphone,
   Bell,
-  HelpCircle
+  HelpCircle,
+  FileCheck
 } from 'lucide-react'
 
 const navigation = [
@@ -39,6 +40,7 @@ const navigation = [
   { name: '칭찬 관리', href: '/review-delete-requests', icon: AlertCircle },
   { divider: true, label: '기타 관리' },
   { name: '공지 사항', href: '/notices', icon: Megaphone },
+  { name: '약관 사항', href: '/terms', icon: FileCheck },
   { name: '전체 알림 보내기', href: '/send-notification', icon: Bell },
   { name: '신고 관리', href: '/reports', icon: Flag },
   { name: '문의 사항', href: '/contacts', icon: HelpCircle },

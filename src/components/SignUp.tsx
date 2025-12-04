@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, User, Shield, Heart } from 'lucide-react'
+import { Phone, User, Shield, Heart, ChevronDown } from 'lucide-react'
 import { supabase, uploadProfileImage } from '../lib/supabase'
 
 const SignUp = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [step, setStep] = useState<'auth-method' | 'type' | 'phone' | 'verify' | 'profile' | 'success'>('auth-method')
+  const [step, setStep] = useState<'auth-method' | 'terms' | 'type' | 'phone' | 'verify' | 'profile' | 'success'>('auth-method')
   const [userType, setUserType] = useState<'parent' | 'teacher' | null>(null)
   const [phone, setPhone] = useState('')
   const [verificationCode, setVerificationCode] = useState('')
@@ -34,6 +34,7 @@ const SignUp = () => {
   
   // 중복 실행 방지를 위한 ref
   const isProcessingOAuth = useRef(false)
+  const oauthTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   // 교사 관련 추가 상태
   const [schoolName, setSchoolName] = useState('')
@@ -44,6 +45,29 @@ const SignUp = () => {
   // 인증번호 카운트다운 관련 상태
   const [countdown, setCountdown] = useState(180)
   const [canResend, setCanResend] = useState(false)
+
+  // 약관 동의 관련 상태
+  const [termsAgreed, setTermsAgreed] = useState({
+    all: false,
+    service: false, // 맘픽 서비스 이용약관 동의 (필수)
+    privacy: false, // 개인정보처리방침 동의 (필수)
+    data: false, // 데이터 활용 동의 (필수)
+    marketing: false // 마케팅 정보 수신 및 활용 동의 (선택)
+  })
+
+  // 데이터 활용 동의 하위 항목 상태
+  const [dataSubTerms, setDataSubTerms] = useState({
+    serviceOperation: false, // [필수] 서비스 운영 및 기능 제공
+    userExperience: false, // [선택] 사용자 경험 및 추천 기능 개선
+    appStability: false, // [선택] 앱 안정성 확보 및 기술적 개선
+    marketing: false, // [선택] 마케팅 및 광고 활용
+    anonymousStats: false // [선택] 익명 통계 데이터 활용
+  })
+
+  // 확장/축소 상태
+  const [expandedTerms, setExpandedTerms] = useState({
+    data: false // 데이터 활용 동의 확장 여부
+  })
 
 
   // 전화번호 포맷팅 함수
@@ -157,6 +181,71 @@ const SignUp = () => {
     console.log('authMethod 상태 변경:', authMethod)
   }, [authMethod])
 
+  // OAuth 취소 감지 및 상태 리셋
+  useEffect(() => {
+    // 페이지가 다시 포커스를 받았을 때 OAuth 상태 확인
+    const handleFocus = async () => {
+      // OAuth 프로세스가 진행 중이었다면 세션 확인
+      if (loading && authMethod && ['kakao', 'google', 'apple'].includes(authMethod)) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          // 세션이 없고 OAuth 콜백이 아닌 경우 OAuth가 취소된 것으로 간주
+          const urlParams = new URLSearchParams(window.location.search)
+          const oauthParam = urlParams.get('oauth')
+          
+          if (!session && oauthParam !== 'success') {
+            setLoading(false)
+            setAuthMethod(null)
+            if (oauthTimeoutRef.current) {
+              clearTimeout(oauthTimeoutRef.current)
+              oauthTimeoutRef.current = null
+            }
+          }
+        } catch (error) {
+          console.error('세션 확인 오류:', error)
+          setLoading(false)
+          setAuthMethod(null)
+        }
+      }
+    }
+
+    // visibilitychange 이벤트로 페이지가 다시 보일 때 확인
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && loading && authMethod && ['kakao', 'google', 'apple'].includes(authMethod)) {
+        handleFocus()
+      }
+    }
+
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (oauthTimeoutRef.current) {
+        clearTimeout(oauthTimeoutRef.current)
+      }
+    }
+  }, [loading, authMethod])
+
+  // OAuth 시작 후 일정 시간이 지나면 자동으로 리셋 (안전장치)
+  useEffect(() => {
+    if (loading && authMethod && ['kakao', 'google', 'apple'].includes(authMethod)) {
+      oauthTimeoutRef.current = setTimeout(() => {
+        setLoading(false)
+        setAuthMethod(null)
+        oauthTimeoutRef.current = null
+      }, 30000) // 30초 후 자동 리셋
+    }
+
+    return () => {
+      if (oauthTimeoutRef.current) {
+        clearTimeout(oauthTimeoutRef.current)
+        oauthTimeoutRef.current = null
+      }
+    }
+  }, [loading, authMethod])
+
   // 인증번호 카운트다운 관리
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null
@@ -188,21 +277,21 @@ const SignUp = () => {
       const phoneParam = searchParams.get('phone')
       const errorParam = searchParams.get('error')
 
-      if (stepParam && ['auth-method', 'type', 'phone', 'verify', 'profile'].includes(stepParam)) {
+      if (stepParam && ['auth-method', 'terms', 'type', 'phone', 'verify', 'profile'].includes(stepParam)) {
         setStep(stepParam as any)
       }
 
       if (oauthParam === 'success') {
-        // OAuth 인증 성공 시 사용자 타입 선택 단계로 (auth-method는 이미 완료됨)
-        setStep('type')
+        // OAuth 인증 성공 시 약관 동의 단계로 (신규 사용자만)
+        setStep('terms')
         if (isMounted) {
           handleOAuthSuccess()
         }
       }
 
       if (phoneParam === 'success') {
-        // 전화번호 로그인 성공 시 사용자 타입 선택 단계로
-        setStep('type')
+        // 전화번호 로그인 성공 시 약관 동의 단계로 (신규 사용자만)
+        setStep('terms')
         setAuthMethod('phone')
         if (isMounted) {
           handlePhoneAuthSuccess()
@@ -352,9 +441,7 @@ const SignUp = () => {
 
   // 자녀 정보 제거 핸들러
   const handleRemoveChild = (index: number) => {
-    if (children.length > 1) {
-      setChildren(children.filter((_, i) => i !== index))
-    }
+    setChildren(children.filter((_, i) => i !== index))
   }
 
   // 자녀 정보 업데이트 핸들러
@@ -701,9 +788,9 @@ const SignUp = () => {
           }, 2500)
           return
         } else {
-          // 신규 사용자인 경우 - 사용자 타입 선택 단계로
-          console.log('신규 사용자 - 프로필 작성 단계로 이동')
-          setStep('type')
+          // 신규 사용자인 경우 - 약관 동의 단계로
+          console.log('신규 사용자 - 약관 동의 단계로 이동')
+          setStep('terms')
         }
       } catch (profileError) {
         console.error('프로필 확인 중 오류:', profileError)
@@ -980,6 +1067,48 @@ const SignUp = () => {
 
       console.log('프로필 저장 성공:', profileResult)
 
+      // 약관 동의 정보 저장
+      try {
+        const termsAgreementData = {
+          user_id: user.id,
+          service_agreed: termsAgreed.service,
+          privacy_agreed: termsAgreed.privacy,
+          data_agreed: termsAgreed.data,
+          marketing_agreed: termsAgreed.marketing,
+          service_terms_version: 1,
+          privacy_terms_version: 1,
+          data_terms_version: 1,
+          marketing_terms_version: 1,
+          data_sub_terms: {
+            serviceOperation: dataSubTerms.serviceOperation,
+            userExperience: dataSubTerms.userExperience,
+            appStability: dataSubTerms.appStability,
+            marketing: dataSubTerms.marketing,
+            anonymousStats: dataSubTerms.anonymousStats
+          },
+          agreed_at: new Date().toISOString()
+        }
+
+        console.log('약관 동의 정보 저장 시도:', termsAgreementData)
+
+        const { data: termsResult, error: termsError } = await supabase
+          .from('user_terms_agreements')
+          .upsert([termsAgreementData], { onConflict: 'user_id' })
+          .select()
+
+        if (termsError) {
+          console.error('약관 동의 정보 저장 오류:', termsError)
+          // 약관 동의 정보 저장 실패는 치명적이지 않으므로 경고만 출력하고 계속 진행
+          console.warn('⚠️ 약관 동의 정보 저장에 실패했지만 회원가입은 계속 진행됩니다.')
+        } else {
+          console.log('✅ 약관 동의 정보 저장 성공:', termsResult)
+        }
+      } catch (termsError) {
+        console.error('약관 동의 정보 저장 중 예외 발생:', termsError)
+        // 약관 동의 정보 저장 실패는 치명적이지 않으므로 경고만 출력하고 계속 진행
+        console.warn('⚠️ 약관 동의 정보 저장에 실패했지만 회원가입은 계속 진행됩니다.')
+      }
+
       // FCM 초기화
       const { initializeFCM } = await import('../utils/fcm')
       await initializeFCM()
@@ -1002,14 +1131,111 @@ const SignUp = () => {
     }
   }
 
+  // 약관 동의 체크박스 핸들러
+  const handleTermChange = (term: 'all' | 'service' | 'privacy' | 'data' | 'marketing', checked: boolean) => {
+    if (term === 'all') {
+      setTermsAgreed({
+        all: checked,
+        service: checked,
+        privacy: checked,
+        data: checked,
+        marketing: checked
+      })
+      // 전체 동의 시 데이터 활용 동의 하위 항목도 모두 체크
+      if (checked) {
+        setDataSubTerms({
+          serviceOperation: true,
+          userExperience: true,
+          appStability: true,
+          marketing: true,
+          anonymousStats: true
+        })
+      } else {
+        setDataSubTerms({
+          serviceOperation: false,
+          userExperience: false,
+          appStability: false,
+          marketing: false,
+          anonymousStats: false
+        })
+      }
+    } else if (term === 'data') {
+      // 데이터 활용 동의 체크 시 모든 하위 항목 체크
+      setTermsAgreed({ ...termsAgreed, [term]: checked })
+      if (checked) {
+        setDataSubTerms({
+          serviceOperation: true,
+          userExperience: true,
+          appStability: true,
+          marketing: true,
+          anonymousStats: true
+        })
+      } else {
+        setDataSubTerms({
+          serviceOperation: false,
+          userExperience: false,
+          appStability: false,
+          marketing: false,
+          anonymousStats: false
+        })
+      }
+    } else {
+      const newTerms = { ...termsAgreed, [term]: checked }
+      // 개별 약관 변경 시 전체 동의 상태 업데이트
+      newTerms.all = newTerms.service && newTerms.privacy && newTerms.data && newTerms.marketing
+      setTermsAgreed(newTerms)
+    }
+  }
+
+  // 데이터 활용 동의 하위 항목 핸들러
+  const handleDataSubTermChange = (subTerm: 'serviceOperation' | 'userExperience' | 'appStability' | 'marketing' | 'anonymousStats', checked: boolean) => {
+    const newSubTerms = { ...dataSubTerms, [subTerm]: checked }
+    setDataSubTerms(newSubTerms)
+
+    // 필수 항목(serviceOperation)이 체크되어 있고, 모든 필수 항목이 체크되어 있으면 부모도 체크
+    if (subTerm === 'serviceOperation' && checked) {
+      setTermsAgreed({ ...termsAgreed, data: true })
+    } else if (subTerm === 'serviceOperation' && !checked) {
+      // 필수 항목이 해제되면 부모도 해제
+      setTermsAgreed({ ...termsAgreed, data: false })
+    }
+  }
+
+  // 확장/축소 토글 핸들러
+  const toggleDataExpanded = () => {
+    setExpandedTerms(prev => ({ ...prev, data: !prev.data }))
+  }
+
+  // 약관 동의 완료 핸들러
+  const handleTermsSubmit = () => {
+    // 필수 약관 체크
+    if (!termsAgreed.service || !termsAgreed.privacy || !termsAgreed.data) {
+      setError('필수 약관에 동의해주세요')
+      return
+    }
+
+    // 데이터 활용 동의의 필수 하위 항목 체크
+    if (!dataSubTerms.serviceOperation) {
+      setError('데이터 활용 동의의 필수 항목에 동의해주세요')
+      return
+    }
+    
+    // 사용자 타입 선택 단계로 이동
+    setStep('type')
+  }
+
   const goBack = () => {
-    if (step === 'type') {
-      // OAuth 가입인 경우 인증 방법 선택으로, 전화번호 가입인 경우 인증번호 확인으로
+    if (step === 'terms') {
+      // 약관 동의에서 뒤로가기 시 인증 방법 선택으로
       if (authMethod === 'phone') {
         setStep('verify')
       } else {
         setStep('auth-method')
       }
+    }
+    else if (step === 'type') {
+      // 사용자 타입 선택에서 뒤로가기 시 약관 동의로
+      setStep('terms')
     }
     else if (step === 'phone') setStep('auth-method')
     else if (step === 'verify') setStep('phone')
@@ -1128,8 +1354,8 @@ const SignUp = () => {
         {/* 진행 단계 표시 */}
         <div className="flex justify-center mb-8">
           <div className="flex items-center space-x-1.5">
-            {['auth-method', 'phone', 'verify', 'type', 'profile'].map((stepName, index) => {
-              const stepIndex = ['auth-method', 'phone', 'verify', 'type', 'profile'].indexOf(step)
+            {['auth-method', 'phone', 'verify', 'terms', 'type', 'profile'].map((stepName, index) => {
+              const stepIndex = ['auth-method', 'phone', 'verify', 'terms', 'type', 'profile'].indexOf(step)
               const isActive = step === stepName
               const isCompleted = index < stepIndex
               
@@ -1189,7 +1415,7 @@ const SignUp = () => {
                   </div>
                   
                   {/* 단계 간 연결선 */}
-                  {index < ['auth-method', 'phone', 'verify', 'type', 'profile'].length - 1 && (
+                  {index < ['auth-method', 'phone', 'verify', 'terms', 'type', 'profile'].length - 1 && (
                     <div className="relative w-8 h-0.5 mx-1">
                       <div className="absolute inset-0 bg-gray-200 rounded-full"></div>
                       <motion.div
@@ -1220,13 +1446,13 @@ const SignUp = () => {
             transition={{ duration: 0.3, ease: "easeInOut" }}
             className="max-w-md mx-auto"
           >
-          {/* 사용자 타입 선택 */}
-          {step === 'type' && (
+          {/* 약관 동의 */}
+          {step === 'terms' && (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.6 }}
-              className="space-y-6 pt-16"
+              className="space-y-6"
             >
               <motion.div 
                 initial={{ opacity: 0 }}
@@ -1234,9 +1460,333 @@ const SignUp = () => {
                 transition={{ delay: 0.4, duration: 0.5 }}
                 className="text-center"
               >
-                <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                <p className="text-sm text-gray-600 font-medium mb-2">
+                  약관에 동의해주세요
+                </p>
+                <div className="text-sm text-gray-600 text-center">
+                  <p>서비스 이용을 위해 필수 약관에 동의가 필요합니다</p>
+                </div>
+              </motion.div>
+
+              <div className="space-y-4">
+                {/* 전체 동의 */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5, duration: 0.5 }}
+                  className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200"
+                >
+                  <label className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={termsAgreed.all}
+                      onChange={(e) => handleTermChange('all', e.target.checked)}
+                      className="w-5 h-5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                      style={{
+                        transition: 'background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, transform 0.15s ease-in-out'
+                      }}
+                    />
+                    <span className="ml-3 text-base font-semibold text-gray-900">
+                      전체 동의
+                    </span>
+                  </label>
+                </motion.div>
+
+                {/* 개별 약관 */}
+                <div className="space-y-3">
+                  {/* 맘픽 서비스 이용약관 동의 (필수) */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.6, duration: 0.5 }}
+                    className="flex items-start justify-between p-3 bg-white rounded-lg"
+                  >
+                    <label className="flex items-start cursor-pointer flex-1">
+                      <input
+                        type="checkbox"
+                        checked={termsAgreed.service}
+                        onChange={(e) => handleTermChange('service', e.target.checked)}
+                        className="w-5 h-5 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                        style={{
+                          transition: 'background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, transform 0.15s ease-in-out'
+                        }}
+                      />
+                      <div className="ml-3 flex-1">
+                        <span className="text-sm font-medium text-gray-900">
+                          맘픽 서비스 이용약관 동의
+                        </span>
+                        <span className="ml-2 text-xs text-red-500">(필수)</span>
+                      </div>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/terms/service')}
+                      className="ml-2 text-xs text-gray-500 hover:text-[#fb8678] underline"
+                    >
+                      보기
+                    </button>
+                  </motion.div>
+
+                  {/* 개인정보처리방침 동의 (필수) */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.7, duration: 0.5 }}
+                    className="flex items-start justify-between p-3 bg-white rounded-lg"
+                  >
+                    <label className="flex items-start cursor-pointer flex-1">
+                      <input
+                        type="checkbox"
+                        checked={termsAgreed.privacy}
+                        onChange={(e) => handleTermChange('privacy', e.target.checked)}
+                        className="w-5 h-5 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                        style={{
+                          transition: 'background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, transform 0.15s ease-in-out'
+                        }}
+                      />
+                      <div className="ml-3 flex-1">
+                        <span className="text-sm font-medium text-gray-900">
+                          개인정보처리방침 동의
+                        </span>
+                        <span className="ml-2 text-xs text-red-500">(필수)</span>
+                      </div>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/terms/privacy')}
+                      className="ml-2 text-xs text-gray-500 hover:text-[#fb8678] underline"
+                    >
+                      보기
+                    </button>
+                  </motion.div>
+
+                  {/* 데이터 활용 동의 (필수) */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.8, duration: 0.5 }}
+                    className="bg-white rounded-lg overflow-hidden"
+                  >
+                    <div className="flex items-start justify-between p-3">
+                      <label className="flex items-start cursor-pointer flex-1">
+                        <input
+                          type="checkbox"
+                          checked={termsAgreed.data}
+                          onChange={(e) => handleTermChange('data', e.target.checked)}
+                          className="w-5 h-5 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                          style={{
+                            transition: 'background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, transform 0.15s ease-in-out'
+                          }}
+                        />
+                        <div className="ml-3 flex-1">
+                          <span className="text-sm font-medium text-gray-900">
+                            데이터 활용 동의
+                          </span>
+                          <span className="ml-2 text-xs text-red-500">(필수)</span>
+                          <p className="mt-1 text-xs text-gray-500">
+                            통계, 추천, UX 개선을 위한 데이터 활용
+                          </p>
+                        </div>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={toggleDataExpanded}
+                          className="p-1 hover:bg-gray-100 rounded transition-colors"
+                        >
+                          <ChevronDown 
+                            className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
+                              expandedTerms.data ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/terms/data')}
+                          className="text-xs text-gray-500 hover:text-[#fb8678] underline"
+                        >
+                          보기
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 하위 체크박스들 (확장 시 표시) */}
+                    <AnimatePresence>
+                      {expandedTerms.data && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.3 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="px-3 pb-3 space-y-3 border-t border-gray-100 pt-3">
+                            {/* [필수] 서비스 운영 및 기능 제공 */}
+                            <label className="flex items-start cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={dataSubTerms.serviceOperation}
+                                onChange={(e) => handleDataSubTermChange('serviceOperation', e.target.checked)}
+                                className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                              />
+                              <div className="ml-2 flex-1">
+                                <span className="text-xs font-medium text-gray-900">
+                                  서비스 운영 및 기능 제공
+                                </span>
+                                <span className="ml-1 text-xs text-red-500">(필수)</span>
+                                <p className="mt-0.5 text-xs text-gray-500">
+                                  계정 운영, 커뮤니티 기능, 콘텐츠 작성, 신고 시스템 운영
+                                </p>
+                              </div>
+                            </label>
+
+                            {/* [선택] 사용자 경험 및 추천 기능 개선 */}
+                            <label className="flex items-start cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={dataSubTerms.userExperience}
+                                onChange={(e) => handleDataSubTermChange('userExperience', e.target.checked)}
+                                className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                              />
+                              <div className="ml-2 flex-1">
+                                <span className="text-xs font-medium text-gray-900">
+                                  사용자 경험 및 추천 기능 개선
+                                </span>
+                                <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                                <p className="mt-0.5 text-xs text-gray-500">
+                                  개인 맞춤형 시설 추천, 콘텐츠 추천, UI 개선
+                                </p>
+                              </div>
+                            </label>
+
+                            {/* [선택] 앱 안정성 확보 및 기술적 개선 */}
+                            <label className="flex items-start cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={dataSubTerms.appStability}
+                                onChange={(e) => handleDataSubTermChange('appStability', e.target.checked)}
+                                className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                              />
+                              <div className="ml-2 flex-1">
+                                <span className="text-xs font-medium text-gray-900">
+                                  앱 안정성 확보 및 기술적 개선
+                                </span>
+                                <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                                <p className="mt-0.5 text-xs text-gray-500">
+                                  기기 정보, 오류 로그, 성능 데이터 수집
+                                </p>
+                              </div>
+                            </label>
+
+                            {/* [선택] 마케팅 및 광고 활용 */}
+                            <label className="flex items-start cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={dataSubTerms.marketing}
+                                onChange={(e) => handleDataSubTermChange('marketing', e.target.checked)}
+                                className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                              />
+                              <div className="ml-2 flex-1">
+                                <span className="text-xs font-medium text-gray-900">
+                                  마케팅 및 광고 활용
+                                </span>
+                                <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                                <p className="mt-0.5 text-xs text-gray-500">
+                                  이벤트/프로모션 안내, 앱 내 광고, 푸시 알림
+                                </p>
+                              </div>
+                            </label>
+
+                            {/* [선택] 익명 통계 데이터 활용 */}
+                            <label className="flex items-start cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={dataSubTerms.anonymousStats}
+                                onChange={(e) => handleDataSubTermChange('anonymousStats', e.target.checked)}
+                                className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                              />
+                              <div className="ml-2 flex-1">
+                                <span className="text-xs font-medium text-gray-900">
+                                  익명 통계 데이터 활용
+                                </span>
+                                <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                                <p className="mt-0.5 text-xs text-gray-500">
+                                  서비스 품질 개선 분석, 연구 및 통계 자료 활용 (개인 식별 불가)
+                                </p>
+                              </div>
+                            </label>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+
+                  {/* 마케팅 정보 수신 및 활용 동의 (선택) */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.9, duration: 0.5 }}
+                    className="flex items-start justify-between p-3 bg-white rounded-lg"
+                  >
+                    <label className="flex items-start cursor-pointer flex-1">
+                      <input
+                        type="checkbox"
+                        checked={termsAgreed.marketing}
+                        onChange={(e) => handleTermChange('marketing', e.target.checked)}
+                        className="w-5 h-5 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] transition-all duration-200 ease-in-out cursor-pointer"
+                        style={{
+                          transition: 'background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, transform 0.15s ease-in-out'
+                        }}
+                      />
+                      <div className="ml-3 flex-1">
+                        <span className="text-sm font-medium text-gray-900">
+                          마케팅 정보 수신 및 활용 동의
+                        </span>
+                        <span className="ml-2 text-xs text-gray-500">(선택)</span>
+                      </div>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/terms/marketing')}
+                      className="ml-2 text-xs text-gray-500 hover:text-[#fb8678] underline"
+                    >
+                      보기
+                    </button>
+                  </motion.div>
+                </div>
+
+                {/* 다음 버튼 */}
+                <motion.button
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1.0, duration: 0.5 }}
+                  onClick={handleTermsSubmit}
+                  disabled={!termsAgreed.service || !termsAgreed.privacy || !termsAgreed.data}
+                  className="w-full bg-[#fb8678] text-white py-4 rounded-xl font-semibold hover:bg-[#e67567] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  다음
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* 사용자 타입 선택 */}
+          {step === 'type' && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.6 }}
+              className="space-y-6"
+            >
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.4, duration: 0.5 }}
+                className="text-center"
+              >
+                <p className="text-sm text-gray-600 font-medium mb-2">
                   어떤 분이신가요?
-                </h2>
+                </p>
                 <div className="text-sm text-gray-600 text-center">
                   <p>서비스 이용 목적에 맞게 선택해주세요</p>
                 </div>
@@ -1247,10 +1797,20 @@ const SignUp = () => {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.5, duration: 0.5 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => handleUserTypeSelect('parent')}
-                  className="w-full p-8 bg-orange-50 rounded-2xl shadow-lg border-2 border-transparent hover:border-orange-200 hover:shadow-xl transition-all duration-200 text-left"
+                  className="w-full p-8 bg-orange-50 rounded-2xl shadow-lg border-2 border-transparent text-left relative"
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
                 >
-                  <div className="flex items-center space-x-6">
+                  <motion.div
+                    className="absolute inset-0 rounded-2xl border-2 border-orange-200"
+                    initial={{ opacity: 0 }}
+                    whileHover={{ opacity: 1 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', pointerEvents: 'none' }}
+                  />
+                  <div className="flex items-center space-x-6 relative z-10">
                     <div className="w-16 h-16 rounded-xl flex items-center justify-center">
                       <img src="/icons/parants.svg" alt="학부모" className="w-16 h-16" />
                     </div>
@@ -1265,10 +1825,20 @@ const SignUp = () => {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.6, duration: 0.5 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => handleUserTypeSelect('teacher')}
-                  className="w-full p-8 bg-blue-50 rounded-2xl shadow-lg border-2 border-transparent hover:border-blue-200 hover:shadow-xl transition-all duration-200 text-left"
+                  className="w-full p-8 bg-blue-50 rounded-2xl shadow-lg border-2 border-transparent text-left relative"
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
                 >
-                  <div className="flex items-center space-x-6">
+                  <motion.div
+                    className="absolute inset-0 rounded-2xl border-2 border-blue-200"
+                    initial={{ opacity: 0 }}
+                    whileHover={{ opacity: 1 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', pointerEvents: 'none' }}
+                  />
+                  <div className="flex items-center space-x-6 relative z-10">
                     <div className="w-16 h-16 rounded-xl flex items-center justify-center">
                       <img src="/icons/schoolmaster.svg" alt="교사" className="w-16 h-16" />
                     </div>
@@ -1307,10 +1877,17 @@ const SignUp = () => {
                   whileTap={{ scale: 0.95 }}
                   onClick={handlePhoneAuth}
                   disabled={loading}
-                  className="w-16 h-16 bg-gradient-to-br from-[#fb8678] to-[#e67567] rounded-full flex items-center justify-center hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg relative overflow-hidden group"
+                  className="w-16 h-16 bg-gradient-to-br from-[#fb8678] to-[#e67567] rounded-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shadow-lg relative overflow-hidden"
                   title="전화번호 인증으로 간편가입하기"
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
                 >
-                  <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-20 transition-opacity duration-300 rounded-full"></div>
+                  <motion.div 
+                    className="absolute inset-0 bg-white rounded-full"
+                    initial={{ opacity: 0 }}
+                    whileHover={{ opacity: 0.2 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                  />
                   <Phone className="w-8 h-8 text-white relative z-10" />
                 </motion.button>
 
@@ -1323,10 +1900,17 @@ const SignUp = () => {
                   whileTap={{ scale: 0.95 }}
                   onClick={handleKakaoLogin}
                   disabled={loading}
-                  className="w-16 h-16 bg-gradient-to-br from-[#FEE500] to-[#FDD835] rounded-full flex items-center justify-center hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg relative overflow-hidden group"
+                  className="w-16 h-16 bg-gradient-to-br from-[#FEE500] to-[#FDD835] rounded-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shadow-lg relative overflow-hidden"
                   title="카카오톡으로 간편가입하기"
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
                 >
-                  <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-20 transition-opacity duration-300 rounded-full"></div>
+                  <motion.div 
+                    className="absolute inset-0 bg-white rounded-full"
+                    initial={{ opacity: 0 }}
+                    whileHover={{ opacity: 0.2 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                  />
                   <svg className="w-9 h-9 relative z-10" viewBox="0 0 24 24" fill="#3C1E1E">
                     <path d="M12.0009 3C17.7999 3 22.501 6.66445 22.501 11.1847C22.501 15.705 17.7999 19.3694 12.0009 19.3694C11.4127 19.3694 10.8361 19.331 10.2742 19.2586L5.86611 22.1419C5.36471 22.4073 5.18769 22.3778 5.39411 21.7289L6.28571 18.0513C3.40572 16.5919 1.50098 14.0619 1.50098 11.1847C1.50098 6.66445 6.20194 3 12.0009 3ZM17.908 11.0591L19.3783 9.63617C19.5656 9.45485 19.5705 9.15617 19.3893 8.96882C19.2081 8.78172 18.9094 8.77668 18.7219 8.95788L16.7937 10.8239V9.28226C16.7937 9.02172 16.5825 8.81038 16.3218 8.81038C16.0613 8.81038 15.8499 9.02172 15.8499 9.28226V11.8393C15.8321 11.9123 15.8325 11.9879 15.8499 12.0611V13.5C15.8499 13.7606 16.0613 13.9719 16.3218 13.9719C16.5825 13.9719 16.7937 13.7606 16.7937 13.5V12.1373L17.2213 11.7236L18.6491 13.7565C18.741 13.8873 18.8873 13.9573 19.0357 13.9573C19.1295 13.9573 19.2241 13.9293 19.3066 13.8714C19.5199 13.7217 19.5713 13.4273 19.4215 13.214L17.908 11.0591ZM14.9503 12.9839H13.4904V9.29702C13.4904 9.03648 13.2791 8.82514 13.0184 8.82514C12.7579 8.82514 12.5467 9.03648 12.5467 9.29702V13.4557C12.5467 13.7164 12.7579 13.9276 13.0184 13.9276H14.9503C15.211 13.9276 15.4222 13.7164 15.4222 13.4557C15.4222 13.1952 15.211 12.9839 14.9503 12.9839ZM9.09318 11.8925L9.78919 10.1849L10.4265 11.8925H9.09318ZM11.6159 12.3802C11.6161 12.3748 11.6175 12.3699 11.6175 12.3645C11.6175 12.2405 11.5687 12.1287 11.4906 12.0445L10.4452 9.24376C10.3468 8.9639 10.1005 8.77815 9.81761 8.77028C9.53948 8.76277 9.28066 8.93672 9.16453 9.21669L7.50348 13.2924C7.40519 13.5337 7.52107 13.8092 7.76242 13.9076C8.00378 14.006 8.2792 13.89 8.37749 13.6486L8.70852 12.8364H10.7787L11.077 13.6356C11.1479 13.8254 11.3278 13.9426 11.5193 13.9425C11.5741 13.9425 11.6298 13.9329 11.6842 13.9126C11.9284 13.8216 12.0524 13.5497 11.9612 13.3054L11.6159 12.3802ZM8.29446 9.30194C8.29446 9.0414 8.08312 8.83006 7.82258 8.83006H4.57822C4.31755 8.83006 4.10622 9.0414 4.10622 9.30194C4.10622 9.56249 4.31755 9.77382 4.57822 9.77382H5.73824V13.5099C5.73824 13.7705 5.94957 13.9817 6.21012 13.9817C6.47078 13.9817 6.68212 13.7705 6.68212 13.5099V9.77382H7.82258C8.08312 9.77382 8.29446 9.56249 8.29446 9.30194Z"></path>
                   </svg>
@@ -1341,10 +1925,17 @@ const SignUp = () => {
                   whileTap={{ scale: 0.95 }}
                   onClick={handleGoogleLogin}
                   disabled={loading}
-                  className="w-16 h-16 bg-white rounded-full flex items-center justify-center hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 border-2 border-gray-200 shadow-lg relative overflow-hidden group"
+                  className="w-16 h-16 bg-white rounded-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed border-2 border-gray-200 shadow-lg relative overflow-hidden"
                   title="구글로 간편가입하기"
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
                 >
-                  <div className="absolute inset-0 bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-full"></div>
+                  <motion.div 
+                    className="absolute inset-0 bg-gray-100 rounded-full"
+                    initial={{ opacity: 0 }}
+                    whileHover={{ opacity: 1 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                  />
                   <svg className="w-8 h-8 relative z-10" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
@@ -1362,10 +1953,17 @@ const SignUp = () => {
                   whileTap={{ scale: 0.95 }}
                   onClick={handleAppleLogin}
                   disabled={loading}
-                  className="w-16 h-16 bg-gradient-to-br from-black to-gray-800 rounded-full flex items-center justify-center hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg relative overflow-hidden group"
+                  className="w-16 h-16 bg-gradient-to-br from-black to-gray-800 rounded-full flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed shadow-lg relative overflow-hidden"
                   title="애플로 간편가입하기"
+                  style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', WebkitTransform: 'translateZ(0)', transform: 'translateZ(0)' }}
                 >
-                  <div className="absolute inset-0 bg-white opacity-0 group-hover:opacity-10 transition-opacity duration-300 rounded-full"></div>
+                  <motion.div 
+                    className="absolute inset-0 bg-white rounded-full"
+                    initial={{ opacity: 0 }}
+                    whileHover={{ opacity: 0.1 }}
+                    transition={{ duration: 0.2 }}
+                    style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                  />
                   <svg className="w-8 h-8 relative z-10" viewBox="0 0 24 24" fill="white">
                     <path d="M11.6734 7.22198C10.7974 7.22198 9.44138 6.22598 8.01338 6.26198C6.12938 6.28598 4.40138 7.35397 3.42938 9.04597C1.47338 12.442 2.92538 17.458 4.83338 20.218C5.76938 21.562 6.87338 23.074 8.33738 23.026C9.74138 22.966 10.2694 22.114 11.9734 22.114C13.6654 22.114 14.1454 23.026 15.6334 22.99C17.1454 22.966 18.1054 21.622 19.0294 20.266C20.0974 18.706 20.5414 17.194 20.5654 17.11C20.5294 17.098 17.6254 15.982 17.5894 12.622C17.5654 9.81397 19.8814 8.46998 19.9894 8.40998C18.6694 6.47798 16.6414 6.26198 15.9334 6.21398C14.0854 6.06998 12.5374 7.22198 11.6734 7.22198ZM14.7934 4.38998C15.5734 3.45398 16.0894 2.14598 15.9454 0.849976C14.8294 0.897976 13.4854 1.59398 12.6814 2.52998C11.9614 3.35798 11.3374 4.68998 11.5054 5.96198C12.7414 6.05798 14.0134 5.32598 14.7934 4.38998Z"></path>
                   </svg>
@@ -1740,19 +2338,17 @@ const SignUp = () => {
                           <div className="text-xs text-gray-500 font-semibold">
                             {index === 0 ? '첫 번째 자녀 정보' : `${index + 1}번째 자녀 정보`}
                           </div>
-                          {children.length > 1 && (
-                            <button
-                              onClick={() => handleRemoveChild(index)}
-                              className="absolute right-3 text-red-500 hover:text-red-700 text-xs font-medium"
-                            >
-                              제거
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleRemoveChild(index)}
+                            className="absolute right-3 text-red-500 hover:text-red-700 text-xs font-medium"
+                          >
+                            제거
+                          </button>
                         </div>
                         
                         {/* 입력 필드들 */}
                         <div className="p-3">
-                          <div className="bg-white rounded-lg">
+                          <div className="bg-white rounded-lg overflow-hidden">
                             {/* 자녀 프로필 사진 */}
                             <div className="flex justify-center">
                               <div className="relative">
@@ -1800,7 +2396,7 @@ const SignUp = () => {
                               />
                             </div>
 
-                            <div className="space-y-3 text-xs">
+                            <div className="space-y-3 text-xs overflow-hidden">
                               {/* 이름 */}
                               <div>
                                 <label className="block text-gray-500 font-semibold mb-1">이름</label>
@@ -1828,13 +2424,21 @@ const SignUp = () => {
                               </div>
 
                               {/* 생년월일 */}
-                              <div>
+                              <div className="w-full overflow-hidden">
                                 <label className="block text-gray-500 font-semibold mb-1">생년월일</label>
                                 <input
                                   type="date"
                                   value={child.birthDate}
                                   onChange={(e) => handleChildChange(index, 'birthDate', e.target.value)}
                                   className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-xs"
+                                  style={{ 
+                                    width: '100%',
+                                    maxWidth: '100%',
+                                    minWidth: 0,
+                                    boxSizing: 'border-box',
+                                    WebkitAppearance: 'none',
+                                    appearance: 'none'
+                                  }}
                                 />
                               </div>
 

@@ -99,6 +99,19 @@ const Profile = () => {
   const [touchStart, setTouchStart] = useState<number | null>(null)
   const [touchEnd, setTouchEnd] = useState<number | null>(null)
 
+  // 약관 철회 관련 상태
+  const [showTermsWithdrawal, setShowTermsWithdrawal] = useState(false)
+  const [showMarketingWithdrawal, setShowMarketingWithdrawal] = useState(false)
+  const [dataSubTerms, setDataSubTerms] = useState({
+    serviceOperation: false,
+    userExperience: false,
+    appStability: false,
+    marketing: false,
+    anonymousStats: false
+  })
+  const [marketingAgreed, setMarketingAgreed] = useState(false)
+  const [loadingTerms, setLoadingTerms] = useState(false)
+
 
 
   useEffect(() => {
@@ -107,7 +120,7 @@ const Profile = () => {
 
   // 성공 팝업과 확인 팝업이 열릴 때 배경 스크롤 비활성화
   useEffect(() => {
-    if (successMessage || showSaveConfirm || showProfileSaveConfirm) {
+    if (successMessage || showSaveConfirm || showProfileSaveConfirm || showTermsWithdrawal || showMarketingWithdrawal) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = 'unset'
@@ -117,7 +130,7 @@ const Profile = () => {
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [successMessage, showSaveConfirm, showProfileSaveConfirm])
+  }, [successMessage, showSaveConfirm, showProfileSaveConfirm, showTermsWithdrawal, showMarketingWithdrawal])
 
   useEffect(() => {
     if (profile) {
@@ -892,6 +905,192 @@ const Profile = () => {
     }
   }
 
+  // 약관 철회 팝업 열기
+  const handleOpenTermsWithdrawal = async () => {
+    setLoadingTerms(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('사용자 정보를 찾을 수 없습니다.')
+        return
+      }
+
+      // 약관 동의 정보 가져오기
+      const { data: termsData, error: termsError } = await supabase
+        .from('user_terms_agreements')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (termsError) {
+        console.error('약관 동의 정보 조회 오류:', termsError)
+        setError('약관 동의 정보를 불러올 수 없습니다.')
+        return
+      }
+
+      // 데이터 활용 동의 하위 항목 정보 설정
+      if (termsData?.data_sub_terms) {
+        setDataSubTerms({
+          serviceOperation: termsData.data_sub_terms.serviceOperation || false,
+          userExperience: termsData.data_sub_terms.userExperience || false,
+          appStability: termsData.data_sub_terms.appStability || false,
+          marketing: termsData.data_sub_terms.marketing || false,
+          anonymousStats: termsData.data_sub_terms.anonymousStats || false
+        })
+      }
+
+      setShowTermsWithdrawal(true)
+    } catch (error) {
+      console.error('약관 동의 정보 조회 오류:', error)
+      setError('약관 동의 정보를 불러올 수 없습니다.')
+    } finally {
+      setLoadingTerms(false)
+    }
+  }
+
+  // 약관 철회 저장
+  const handleSaveTermsWithdrawal = async () => {
+    setSaving(true)
+    setError('')
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('사용자 정보를 찾을 수 없습니다.')
+        return
+      }
+
+      // 필수 항목 체크
+      if (!dataSubTerms.serviceOperation) {
+        setError('필수 항목(서비스 운영 및 기능 제공)은 해제할 수 없습니다.')
+        setSaving(false)
+        return
+      }
+
+      // 약관 동의 정보 업데이트
+      const { error: updateError } = await supabase
+        .from('user_terms_agreements')
+        .upsert({
+          user_id: user.id,
+          data_sub_terms: {
+            serviceOperation: dataSubTerms.serviceOperation,
+            userExperience: dataSubTerms.userExperience,
+            appStability: dataSubTerms.appStability,
+            marketing: dataSubTerms.marketing,
+            anonymousStats: dataSubTerms.anonymousStats
+          },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' })
+
+      if (updateError) {
+        console.error('약관 동의 정보 업데이트 오류:', updateError)
+        setError('약관 동의 정보 업데이트에 실패했습니다.')
+        return
+      }
+
+      setSuccessMessage('약관 동의 정보가 성공적으로 업데이트되었습니다.')
+      setShowTermsWithdrawal(false)
+      
+      // 3초 후 성공 메시지 자동 제거
+      setTimeout(() => {
+        setSuccessMessage('')
+      }, 3000)
+    } catch (error) {
+      console.error('약관 동의 정보 업데이트 오류:', error)
+      setError('약관 동의 정보 업데이트에 실패했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // 데이터 활용 동의 하위 항목 핸들러
+  const handleDataSubTermChange = (subTerm: 'serviceOperation' | 'userExperience' | 'appStability' | 'marketing' | 'anonymousStats', checked: boolean) => {
+    // 필수 항목은 해제 불가
+    if (subTerm === 'serviceOperation' && !checked) {
+      setError('필수 항목은 해제할 수 없습니다.')
+      return
+    }
+    setDataSubTerms(prev => ({ ...prev, [subTerm]: checked }))
+    setError('')
+  }
+
+  // 마케팅 약관 철회 팝업 열기
+  const handleOpenMarketingWithdrawal = async () => {
+    setLoadingTerms(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('사용자 정보를 찾을 수 없습니다.')
+        return
+      }
+
+      // 약관 동의 정보 가져오기
+      const { data: termsData, error: termsError } = await supabase
+        .from('user_terms_agreements')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (termsError) {
+        console.error('약관 동의 정보 조회 오류:', termsError)
+        setError('약관 동의 정보를 불러올 수 없습니다.')
+        return
+      }
+
+      // 마케팅 약관 동의 정보 설정
+      setMarketingAgreed(termsData?.marketing_agreed || false)
+
+      setShowMarketingWithdrawal(true)
+    } catch (error) {
+      console.error('약관 동의 정보 조회 오류:', error)
+      setError('약관 동의 정보를 불러올 수 없습니다.')
+    } finally {
+      setLoadingTerms(false)
+    }
+  }
+
+  // 마케팅 약관 철회 저장
+  const handleSaveMarketingWithdrawal = async () => {
+    setSaving(true)
+    setError('')
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('사용자 정보를 찾을 수 없습니다.')
+        return
+      }
+
+      // 약관 동의 정보 업데이트
+      const { error: updateError } = await supabase
+        .from('user_terms_agreements')
+        .upsert({
+          user_id: user.id,
+          marketing_agreed: marketingAgreed,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' })
+
+      if (updateError) {
+        console.error('약관 동의 정보 업데이트 오류:', updateError)
+        setError('약관 동의 정보 업데이트에 실패했습니다.')
+        return
+      }
+
+      setSuccessMessage('마케팅 정보 수신 동의가 성공적으로 업데이트되었습니다.')
+      setShowMarketingWithdrawal(false)
+      
+      // 3초 후 성공 메시지 자동 제거
+      setTimeout(() => {
+        setSuccessMessage('')
+      }, 3000)
+    } catch (error) {
+      console.error('약관 동의 정보 업데이트 오류:', error)
+      setError('약관 동의 정보 업데이트에 실패했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1311,8 +1510,8 @@ const Profile = () => {
               </div>
             ) : userPosts.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-gray-600">아직 작성한 글이 없습니다.</p>
-                <p className="text-gray-500 text-sm">커뮤니티에 글을 작성해보세요!</p>
+                <p className="text-gray-600 text-sm">아직 작성한 글이 없습니다.</p>
+                <p className="text-gray-500 text-xs mt-1">커뮤니티에 글을 작성해보세요!</p>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
@@ -1488,7 +1687,7 @@ const Profile = () => {
                           
                           {/* 입력 필드들 */}
                           <div className="p-3">
-                            <div className="bg-white rounded-lg">
+                            <div className="bg-white rounded-lg overflow-hidden">
                               {/* 자녀 프로필 사진 */}
                               <div className="flex justify-center mb-3">
                                 <div className="relative">
@@ -1542,7 +1741,7 @@ const Profile = () => {
                                 />
                               </div>
 
-                              <div className="space-y-3 text-xs">
+                              <div className="space-y-3 text-xs overflow-hidden">
                                 {/* 이름 */}
                                 <div>
                                   <label className="block text-gray-500 font-semibold mb-1">이름</label>
@@ -1570,13 +1769,21 @@ const Profile = () => {
                                 </div>
 
                                 {/* 생년월일 */}
-                                <div>
+                                <div className="w-full overflow-hidden">
                                   <label className="block text-gray-500 font-semibold mb-1">생년월일</label>
                                   <input
                                     type="date"
                                     value={child.birth_date}
                                     onChange={(e) => handleChildChange(index, 'birth_date', e.target.value)}
                                     className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-xs"
+                                    style={{ 
+                                      width: '100%',
+                                      maxWidth: '100%',
+                                      minWidth: 0,
+                                      boxSizing: 'border-box',
+                                      WebkitAppearance: 'none',
+                                      appearance: 'none'
+                                    }}
                                   />
                                 </div>
 
@@ -1640,9 +1847,9 @@ const Profile = () => {
                 
                 <div className="p-3">
                   <div className="bg-white rounded-lg">
-                    <div className="text-center py-8 text-gray-500">
-                      <p>등록된 자녀 정보가 없습니다.</p>
-                      <p className="text-sm mt-1">자녀 정보를 추가해주세요.</p>
+                    <div className="text-center py-8">
+                      <p className="text-gray-600 text-sm">등록된 자녀 정보가 없습니다.</p>
+                      <p className="text-gray-500 text-xs mt-1">자녀 정보를 추가해주세요.</p>
                     </div>
                   </div>
                 </div>
@@ -1685,7 +1892,7 @@ const Profile = () => {
                     
                     {/* 입력 필드들 */}
                     <div className="p-3">
-                      <div className="bg-white rounded-lg">
+                      <div className="bg-white rounded-lg overflow-hidden">
                         {/* 자녀 프로필 사진 */}
                         <div className="flex justify-center mb-3">
                           <div className="relative">
@@ -1739,7 +1946,7 @@ const Profile = () => {
                           />
                         </div>
 
-                        <div className="space-y-3 text-xs">
+                        <div className="space-y-3 text-xs overflow-hidden">
                           {/* 이름 */}
                           <div>
                             <label className="block text-gray-500 font-semibold mb-1">이름</label>
@@ -1767,13 +1974,21 @@ const Profile = () => {
                           </div>
 
                           {/* 생년월일 */}
-                          <div>
+                          <div className="w-full overflow-hidden">
                             <label className="block text-gray-500 font-semibold mb-1">생년월일</label>
                             <input
                               type="date"
                               value={child.birth_date}
                               onChange={(e) => handleChildChange(index, 'birth_date', e.target.value)}
                               className="w-full px-3 py-1.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-xs"
+                              style={{ 
+                                width: '100%',
+                                maxWidth: '100%',
+                                minWidth: 0,
+                                boxSizing: 'border-box',
+                                WebkitAppearance: 'none',
+                                appearance: 'none'
+                              }}
                             />
                           </div>
 
@@ -1929,35 +2144,73 @@ const Profile = () => {
                    </div>
                  </div>
                  
-                 {/* 마케팅 정보 수신 및 활용 동의서 */}
-                 <div 
-                   className="w-full p-3 text-left border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 transition-colors rounded-lg"
-                   onClick={() => window.open('https://mompick.ai.kr/marketing-consent.html', '_blank', 'noopener,noreferrer')}
-                 >
-                   <div className="flex items-center justify-between">
-                     <div>
-                       <p className="text-xs font-medium text-gray-900">마케팅 정보 수신 및 활용 동의서</p>
-                       <p className="text-[10px] text-gray-500 mt-0.5">마케팅 정보 수신 동의 및 철회</p>
-                     </div>
-                     <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                     </svg>
-                   </div>
-                 </div>
-                 
                  {/* 데이터 활용 동의서 */}
                  <div 
-                   className="w-full p-3 text-left cursor-pointer hover:bg-gray-50 transition-colors rounded-lg"
-                   onClick={() => window.open('https://mompick.ai.kr/data-consent.html', '_blank', 'noopener,noreferrer')}
+                   className="w-full p-3 text-left border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors rounded-lg"
                  >
                    <div className="flex items-center justify-between">
-                     <div>
+                     <div 
+                       className="flex-1 cursor-pointer"
+                       onClick={() => window.open('https://mompick.ai.kr/data-consent.html', '_blank', 'noopener,noreferrer')}
+                     >
                        <p className="text-xs font-medium text-gray-900">데이터 활용 동의서</p>
                        <p className="text-[10px] text-gray-500 mt-0.5">데이터 활용 및 처리에 대한 안내</p>
                      </div>
-                     <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                     </svg>
+                     <div className="flex items-center gap-2">
+                       <button
+                         onClick={(e) => {
+                           e.stopPropagation()
+                           handleOpenTermsWithdrawal()
+                         }}
+                         className="px-2 py-1 text-[10px] text-gray-600 hover:text-[#fb8678] hover:bg-gray-100 rounded transition-colors"
+                       >
+                         약관철회
+                       </button>
+                       <svg 
+                         className="w-3 h-3 text-gray-400 cursor-pointer" 
+                         fill="none" 
+                         stroke="currentColor" 
+                         viewBox="0 0 24 24"
+                         onClick={() => window.open('https://mompick.ai.kr/data-consent.html', '_blank', 'noopener,noreferrer')}
+                       >
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                       </svg>
+                     </div>
+                   </div>
+                 </div>
+                 
+                 {/* 마케팅 정보 수신 및 활용 동의서 */}
+                 <div 
+                   className="w-full p-3 text-left hover:bg-gray-50 transition-colors rounded-lg"
+                 >
+                   <div className="flex items-center justify-between">
+                     <div 
+                       className="flex-1 cursor-pointer"
+                       onClick={() => window.open('https://mompick.ai.kr/marketing-consent.html', '_blank', 'noopener,noreferrer')}
+                     >
+                       <p className="text-xs font-medium text-gray-900">마케팅 정보 수신 및 활용 동의서</p>
+                       <p className="text-[10px] text-gray-500 mt-0.5">마케팅 정보 수신 동의 및 안내</p>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <button
+                         onClick={(e) => {
+                           e.stopPropagation()
+                           handleOpenMarketingWithdrawal()
+                         }}
+                         className="px-2 py-1 text-[10px] text-gray-600 hover:text-[#fb8678] hover:bg-gray-100 rounded transition-colors"
+                       >
+                         약관철회
+                       </button>
+                       <svg 
+                         className="w-3 h-3 text-gray-400 cursor-pointer" 
+                         fill="none" 
+                         stroke="currentColor" 
+                         viewBox="0 0 24 24"
+                         onClick={() => window.open('https://mompick.ai.kr/marketing-consent.html', '_blank', 'noopener,noreferrer')}
+                       >
+                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                       </svg>
+                     </div>
                    </div>
                  </div>
                </div>
@@ -2039,8 +2292,8 @@ const Profile = () => {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl max-w-sm w-full mx-4 animate-[modalSlideUp_0.3s_cubic-bezier(0.22,0.61,0.36,1)]">
               <div className="p-6 text-center">
-                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-8 h-8 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-16 h-16 bg-[#fb8678] rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
@@ -2110,6 +2363,236 @@ const Profile = () => {
                     확인
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 약관 철회 팝업 */}
+        {showTermsWithdrawal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-md w-full mx-4 my-8 animate-[modalSlideUp_0.3s_cubic-bezier(0.22,0.61,0.36,1)]">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">데이터 활용 동의서 철회</h3>
+                  <button
+                    onClick={() => setShowTermsWithdrawal(false)}
+                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+
+                {loadingTerms ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#fb8678] mx-auto mb-4"></div>
+                    <p className="text-gray-600 text-sm">약관 정보를 불러오는 중...</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 mb-4">
+                        데이터 활용 동의서의 선택 항목을 철회할 수 있습니다. 필수 항목은 해제할 수 없습니다.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 max-h-96 overflow-y-auto mb-4">
+                      {/* [필수] 서비스 운영 및 기능 제공 */}
+                      <label className="flex items-start cursor-pointer p-3 bg-gray-50 rounded-lg">
+                        <input
+                          type="checkbox"
+                          checked={dataSubTerms.serviceOperation}
+                          disabled={true}
+                          className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678] cursor-not-allowed opacity-60"
+                        />
+                        <div className="ml-2 flex-1">
+                          <span className="text-xs font-medium text-gray-900">
+                            서비스 운영 및 기능 제공
+                          </span>
+                          <span className="ml-1 text-xs text-red-500">(필수)</span>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            계정 운영, 커뮤니티 기능, 콘텐츠 작성, 신고 시스템 운영
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* [선택] 사용자 경험 및 추천 기능 개선 */}
+                      <label className="flex items-start cursor-pointer p-3 bg-white rounded-lg hover:bg-gray-50 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={dataSubTerms.userExperience}
+                          onChange={(e) => handleDataSubTermChange('userExperience', e.target.checked)}
+                          className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678]"
+                        />
+                        <div className="ml-2 flex-1">
+                          <span className="text-xs font-medium text-gray-900">
+                            사용자 경험 및 추천 기능 개선
+                          </span>
+                          <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            개인 맞춤형 시설 추천, 콘텐츠 추천, UI 개선
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* [선택] 앱 안정성 확보 및 기술적 개선 */}
+                      <label className="flex items-start cursor-pointer p-3 bg-white rounded-lg hover:bg-gray-50 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={dataSubTerms.appStability}
+                          onChange={(e) => handleDataSubTermChange('appStability', e.target.checked)}
+                          className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678]"
+                        />
+                        <div className="ml-2 flex-1">
+                          <span className="text-xs font-medium text-gray-900">
+                            앱 안정성 확보 및 기술적 개선
+                          </span>
+                          <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            기기 정보, 오류 로그, 성능 데이터 수집
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* [선택] 마케팅 및 광고 활용 */}
+                      <label className="flex items-start cursor-pointer p-3 bg-white rounded-lg hover:bg-gray-50 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={dataSubTerms.marketing}
+                          onChange={(e) => handleDataSubTermChange('marketing', e.target.checked)}
+                          className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678]"
+                        />
+                        <div className="ml-2 flex-1">
+                          <span className="text-xs font-medium text-gray-900">
+                            마케팅 및 광고 활용
+                          </span>
+                          <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            이벤트/프로모션 안내, 앱 내 광고, 푸시 알림
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* [선택] 익명 통계 데이터 활용 */}
+                      <label className="flex items-start cursor-pointer p-3 bg-white rounded-lg hover:bg-gray-50 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={dataSubTerms.anonymousStats}
+                          onChange={(e) => handleDataSubTermChange('anonymousStats', e.target.checked)}
+                          className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678]"
+                        />
+                        <div className="ml-2 flex-1">
+                          <span className="text-xs font-medium text-gray-900">
+                            익명 통계 데이터 활용
+                          </span>
+                          <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            서비스 품질 개선 분석, 연구 및 통계 자료 활용 (개인 식별 불가)
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+
+                    {error && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-red-600 text-xs">{error}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setShowTermsWithdrawal(false)}
+                        className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                      >
+                        취소
+                      </button>
+                      <button
+                        onClick={handleSaveTermsWithdrawal}
+                        disabled={saving}
+                        className="flex-1 px-4 py-3 bg-[#fb8678] text-white rounded-xl font-medium hover:bg-[#e67567] disabled:opacity-50 transition-colors"
+                      >
+                        {saving ? '저장 중...' : '저장하기'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 마케팅 약관 철회 팝업 */}
+        {showMarketingWithdrawal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl max-w-md w-full mx-4 my-8 animate-[modalSlideUp_0.3s_cubic-bezier(0.22,0.61,0.36,1)]">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">마케팅 정보 수신 동의 철회</h3>
+                  <button
+                    onClick={() => setShowMarketingWithdrawal(false)}
+                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+
+                {loadingTerms ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#fb8678] mx-auto mb-4"></div>
+                    <p className="text-gray-600 text-sm">약관 정보를 불러오는 중...</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 mb-4">
+                        마케팅 정보 수신 동의를 철회할 수 있습니다. 동의를 해제하면 마케팅 정보를 받을 수 없습니다.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 mb-4">
+                      {/* 마케팅 정보 수신 동의 */}
+                      <label className="flex items-start cursor-pointer p-3 bg-white rounded-lg hover:bg-gray-50 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={marketingAgreed}
+                          onChange={(e) => setMarketingAgreed(e.target.checked)}
+                          className="w-4 h-4 mt-0.5 border-gray-300 rounded focus:ring-[#fb8678] focus:ring-2 accent-[#fb8678]"
+                        />
+                        <div className="ml-2 flex-1">
+                          <span className="text-xs font-medium text-gray-900">
+                            마케팅 정보 수신 및 활용 동의
+                          </span>
+                          <span className="ml-1 text-xs text-gray-500">(선택)</span>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            이벤트/프로모션 안내, 앱 내 광고, 푸시 알림 등 마케팅 정보 수신
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+
+                    {error && (
+                      <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-red-600 text-xs">{error}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setShowMarketingWithdrawal(false)}
+                        className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                      >
+                        취소
+                      </button>
+                      <button
+                        onClick={handleSaveMarketingWithdrawal}
+                        disabled={saving}
+                        className="flex-1 px-4 py-3 bg-[#fb8678] text-white rounded-xl font-medium hover:bg-[#e67567] disabled:opacity-50 transition-colors"
+                      >
+                        {saving ? '저장 중...' : '저장하기'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

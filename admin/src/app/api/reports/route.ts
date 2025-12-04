@@ -88,11 +88,18 @@ export async function GET() {
         }
         
         // target_type이 없으면 post_id가 있으면 'post'로 간주
-        const inferredTargetType = normalizedTargetType || (report.post_id ? 'post' : null)
+        // 단, target_type이 'profile' 또는 'comment'인 경우는 각각 프로필/댓글 신고로 처리
+        const inferredTargetType = normalizedTargetType === 'profile' 
+          ? 'profile' 
+          : normalizedTargetType === 'comment'
+          ? 'comment'
+          : (normalizedTargetType || (report.post_id ? 'post' : null))
         
         // target_type에 따라 다른 테이블에서 조회
-        // post_id가 있으면 우선 사용, 없으면 target_id 사용
-        const targetId = report.post_id || report.target_id
+        // comment인 경우 target_id 사용, 그 외에는 post_id가 있으면 우선 사용, 없으면 target_id 사용
+        const targetId = inferredTargetType === 'comment' 
+          ? report.target_id 
+          : (report.post_id || report.target_id)
         
         console.log('🔍 신고 타입 분석:', {
           original: report.target_type,
@@ -102,7 +109,129 @@ export async function GET() {
           facility_type: report.facility_type
         })
         
-        if ((inferredTargetType === 'post' || !inferredTargetType) && targetId) {
+        if (inferredTargetType === 'profile') {
+          // 프로필 신고 처리
+          // 커뮤니티 페이지에서 신고한 경우: post_id가 있고, 게시글 작성자가 피신고자
+          // 상세보기 페이지에서 신고한 경우: target_id가 피신고자 프로필 ID
+          
+          if (report.post_id) {
+            // 커뮤니티 페이지에서 신고한 경우 - 게시글 정보와 작성자 정보 조회
+            const { data: postData } = await supabase
+              .from('community_posts')
+              .select('id, content, author_name, author_profile_image, location, category, images, hashtags, emojis, author_id')
+              .eq('id', report.post_id)
+              .single()
+            
+            if (postData) {
+              targetData = {
+                type: 'profile',
+                id: postData.id,
+                content: postData.content,
+                images: postData.images || [],
+                author_name: postData.author_name,
+                author_profile_image: postData.author_profile_image,
+                location: postData.location,
+                category: postData.category,
+                hashtags: postData.hashtags || [],
+                emojis: postData.emojis || []
+              }
+              
+              // 프로필 신고의 피신고자는 게시글 작성자 또는 댓글 작성자
+              if (report.target_id) {
+                // 댓글/답글 작성자 프로필 신고인 경우 - target_id가 피신고자 프로필 ID
+                const { data: profileData } = await supabase
+                  .from('profiles')
+                  .select('id, full_name, nickname, profile_image_url, auth_user_id, user_type')
+                  .eq('id', report.target_id)
+                  .single()
+                
+                if (profileData) {
+                  targetAuthor = profileData
+                } else {
+                  // target_id로 못 찾으면 게시글 작성자로 폴백
+                  if (postData.author_id) {
+                    let { data: author } = await supabase
+                      .from('profiles')
+                      .select('id, full_name, nickname, profile_image_url, auth_user_id')
+                      .eq('id', postData.author_id)
+                      .maybeSingle()
+                    
+                    if (!author) {
+                      const { data: authorByAuthId } = await supabase
+                        .from('profiles')
+                        .select('id, full_name, nickname, profile_image_url, auth_user_id')
+                        .eq('auth_user_id', postData.author_id)
+                        .maybeSingle()
+                      author = authorByAuthId
+                    }
+                    
+                    targetAuthor = author
+                  }
+                }
+              } else {
+                // 게시글 작성자 프로필 신고인 경우
+                if (postData.author_id) {
+                  // 먼저 id로 조회 시도
+                  let { data: author } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, nickname, profile_image_url, auth_user_id')
+                    .eq('id', postData.author_id)
+                    .maybeSingle()
+                  
+                  // id로 못 찾으면 auth_user_id로 조회 시도
+                  if (!author) {
+                    const { data: authorByAuthId } = await supabase
+                      .from('profiles')
+                      .select('id, full_name, nickname, profile_image_url, auth_user_id')
+                      .eq('auth_user_id', postData.author_id)
+                      .maybeSingle()
+                    author = authorByAuthId
+                  }
+                  
+                  targetAuthor = author
+                }
+              }
+              
+              console.log('🔍 프로필 신고 - 커뮤니티 페이지:', {
+                post_id: report.post_id,
+                target_id: report.target_id,
+                found: !!targetAuthor,
+                author_name: targetAuthor?.full_name
+              })
+            }
+          } else if (report.target_id) {
+            // 상세보기 페이지에서 신고한 경우 - target_id가 피신고자 프로필 ID
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('id, full_name, nickname, profile_image_url, auth_user_id, user_type')
+              .eq('id', report.target_id)
+              .single()
+            
+            if (profileData) {
+              targetData = {
+                type: 'profile',
+                id: profileData.id,
+                full_name: profileData.full_name,
+                nickname: profileData.nickname,
+                profile_image_url: profileData.profile_image_url,
+                user_type: profileData.user_type
+              }
+              
+              // 프로필 신고의 피신고자는 target_id에 해당하는 프로필
+              targetAuthor = profileData
+              
+              console.log('🔍 프로필 신고 - 상세보기 페이지:', {
+                target_id: report.target_id,
+                found: !!profileData,
+                author_name: profileData?.full_name,
+                facility_type: report.facility_type,
+                facility_name: report.facility_name
+              })
+            } else {
+              console.warn('프로필 신고 - 피신고자 프로필을 찾을 수 없음:', report.target_id)
+            }
+          }
+        } else if ((inferredTargetType === 'post' || !inferredTargetType) && targetId) {
           // 커뮤니티 게시글
           const { data: postData } = await supabase
             .from('community_posts')
@@ -171,14 +300,21 @@ export async function GET() {
               parent_id: commentData.parent_id
             }
             
-            // 댓글 작성자 정보 조회 (user_id는 auth_user_id)
+            // 댓글 작성자 정보 조회 (comments.user_id는 profiles.auth_user_id를 참조)
             if (commentData.user_id) {
               const { data: author } = await supabase
                 .from('profiles')
                 .select('id, full_name, nickname, profile_image_url, auth_user_id')
                 .eq('auth_user_id', commentData.user_id)
-                .single()
+                .maybeSingle()
+              
               targetAuthor = author
+              
+              console.log('🔍 댓글 작성자 조회:', {
+                comment_user_id: commentData.user_id,
+                found: !!author,
+                author_name: author?.full_name
+              })
             }
             
             // 댓글이 속한 게시글 정보도 조회

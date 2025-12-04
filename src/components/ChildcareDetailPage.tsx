@@ -129,6 +129,19 @@ const ChildcareDetailPage: React.FC = () => {
   const [isMealImageReport, setIsMealImageReport] = useState<boolean>(false)
   const [currentBuildingImageIndex, setCurrentBuildingImageIndex] = useState<number>(0)
   
+  // 프로필 사진 전체보기 뷰어 상태
+  const [showProfileImageViewer, setShowProfileImageViewer] = useState<boolean>(false)
+  const [profileImageViewerImages, setProfileImageViewerImages] = useState<string[]>([])
+  const [currentProfileImageIndex, setCurrentProfileImageIndex] = useState<number>(0)
+  const [profileImageViewerUser, setProfileImageViewerUser] = useState<{ id: string; name: string } | null>(null)
+  const [showProfileImageViewerMenu, setShowProfileImageViewerMenu] = useState<boolean>(false)
+  
+  // 프로필 신고 관련 상태
+  const [showProfileReportModal, setShowProfileReportModal] = useState<boolean>(false)
+  const [profileReportReason, setProfileReportReason] = useState<string>('')
+  const [profileReportType, setProfileReportType] = useState<string>('spam')
+  const [profileReportLoading, setProfileReportLoading] = useState<boolean>(false)
+  
   // 급식 데이터 (어제, 오늘, 내일)
   const [mealPhotos, setMealPhotos] = useState<{
     yesterday: string[]
@@ -162,6 +175,185 @@ const ChildcareDetailPage: React.FC = () => {
     setIsMealImageReport(false)
     setIsBuildingImageReport(false)
   }
+
+  // 프로필 사진 전체보기 열기
+  const openProfileImageViewer = (profileImage: string, childrenImages?: string[], user?: { id: string; name: string }) => {
+    // 자녀 사진 필터링 (null, undefined, 빈 문자열 제거)
+    const validChildrenImages = (childrenImages || []).filter(img => img && img.trim() !== '')
+    
+    // 프로필 사진과 자녀 사진이 모두 없는 경우 모달을 열지 않음
+    if (!profileImage && validChildrenImages.length === 0) {
+      return
+    }
+    
+    // 프로필 사진이 있으면 첫 번째로, 없으면 자녀 사진만 사용
+    const allImages = profileImage 
+      ? [profileImage, ...validChildrenImages]
+      : validChildrenImages
+    
+    if (allImages.length === 0) {
+      return
+    }
+    
+    setProfileImageViewerImages(allImages)
+    setCurrentProfileImageIndex(0)
+    setProfileImageViewerUser(user || null)
+    setShowProfileImageViewerMenu(false)
+    setShowProfileImageViewer(true)
+  }
+  
+  // 프로필 사진 전체보기 닫기
+  const closeProfileImageViewer = () => {
+    setShowProfileImageViewer(false)
+    setProfileImageViewerImages([])
+    setCurrentProfileImageIndex(0)
+    setProfileImageViewerUser(null)
+    setShowProfileImageViewerMenu(false)
+  }
+
+  // 프로필 신고 모달 열기
+  const handleOpenProfileReportModal = () => {
+    setShowProfileReportModal(true)
+    setProfileReportReason('')
+    setProfileReportType('spam')
+    setShowProfileImageViewerMenu(false)
+  }
+  
+  // 프로필 신고 모달 닫기
+  const handleCloseProfileReportModal = () => {
+    setShowProfileReportModal(false)
+    setProfileReportReason('')
+    setProfileReportType('spam')
+  }
+  
+  // 프로필 신고 처리 (중복 신고 허용)
+  const handleSubmitProfileReport = async () => {
+    if (!currentProfileId || !profileReportReason.trim() || !profileImageViewerUser) return
+    
+    setProfileReportLoading(true)
+    try {
+      // auth_user_id를 profiles.id로 변환
+      let targetProfileId = profileImageViewerUser.id
+      if (profileImageViewerUser.id) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('auth_user_id', profileImageViewerUser.id)
+          .single()
+        
+        if (!profileError && profileData) {
+          targetProfileId = profileData.id
+        } else {
+          // auth_user_id로 못 찾으면 id로 직접 시도 (이미 profile_id인 경우)
+          const { data: directProfileData } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', profileImageViewerUser.id)
+            .single()
+          
+          if (directProfileData) {
+            targetProfileId = directProfileData.id
+          }
+        }
+      }
+      
+      // 시설 주소 정보
+      const facilityAddress = childcare?.address || null
+      
+      // admin_notes에 주소 정보를 JSON으로 저장
+      const adminNotesData = {
+        facility_address: facilityAddress
+      }
+      
+      const { error } = await supabase
+        .from('reports')
+        .insert({
+          reporter_id: currentProfileId,
+          report_reason: profileReportReason.trim(),
+          report_type: profileReportType,
+          status: 'pending',
+          target_type: 'profile',
+          target_id: targetProfileId,
+          facility_type: 'childcare',
+          facility_code: stcode || null,
+          facility_name: childcare?.name || null,
+          admin_notes: JSON.stringify(adminNotesData)
+        })
+
+      // 프로필 신고는 중복 허용이므로, UNIQUE 제약조건 위반 에러(409 Conflict)는 성공으로 처리
+      if (error) {
+        const errorMessage = error.message?.toLowerCase() || ''
+        const errorCode = error.code || ''
+        const errorDetails = error.details?.toLowerCase() || ''
+        const errorHint = (error as any)?.hint?.toLowerCase() || ''
+        
+        // 409 Conflict 오류 감지 (더 포괄적으로)
+        const isDuplicateError = 
+          errorCode === '23505' || 
+          errorCode === 'PGRST116' || 
+          errorMessage.includes('duplicate') || 
+          errorMessage.includes('unique') ||
+          errorMessage.includes('conflict') ||
+          errorMessage.includes('already exists') ||
+          errorDetails.includes('duplicate') ||
+          errorDetails.includes('unique') ||
+          errorDetails.includes('conflict') ||
+          errorHint.includes('duplicate') ||
+          errorHint.includes('unique') ||
+          (error as any)?.status === 409 ||
+          (error as any)?.statusCode === 409 ||
+          (error as any)?.statusText === 'Conflict' ||
+          String(error).includes('409') ||
+          String(error).includes('Conflict')
+        
+        if (isDuplicateError) {
+          // 중복 신고는 성공으로 처리
+          alert('신고가 성공적으로 접수되었습니다.')
+          handleCloseProfileReportModal()
+          closeProfileImageViewer()
+          return
+        }
+        console.error('신고 처리 오류:', error)
+        alert('신고 처리 중 오류가 발생했습니다.')
+        return
+      }
+
+      alert('신고가 성공적으로 접수되었습니다.')
+      handleCloseProfileReportModal()
+      closeProfileImageViewer()
+    } catch (error: any) {
+      const errorMessage = error?.message?.toLowerCase() || ''
+      const errorCode = error?.code || ''
+      const errorString = String(error).toLowerCase()
+      
+      // 409 Conflict 오류 감지 (더 포괄적으로)
+      const isDuplicateError = 
+        error?.status === 409 ||
+        error?.statusCode === 409 ||
+        error?.statusText === 'Conflict' ||
+        errorCode === '23505' || 
+        errorCode === 'PGRST116' ||
+        errorMessage.includes('duplicate') || 
+        errorMessage.includes('unique') ||
+        errorMessage.includes('conflict') ||
+        errorMessage.includes('already exists') ||
+        errorString.includes('409') ||
+        errorString.includes('conflict')
+      
+      if (isDuplicateError) {
+        // 중복 신고는 성공으로 처리
+        alert('신고가 성공적으로 접수되었습니다.')
+        handleCloseProfileReportModal()
+        closeProfileImageViewer()
+        return
+      }
+      console.error('신고 처리 오류:', error)
+      alert('신고 처리 중 오류가 발생했습니다.')
+    } finally {
+      setProfileReportLoading(false)
+    }
+  }
+
   const goPrevImage = () => {
     if (imageViewerPhotos.length === 0) return
     setCurrentImageIndex((prev) => (prev - 1 + imageViewerPhotos.length) % imageViewerPhotos.length)
@@ -211,9 +403,9 @@ const ChildcareDetailPage: React.FC = () => {
     (childcare.staff.clerk || 0) > 0
   )
   
-  // 사진 갤러리, API 정보 모달이 열렸을 때 body 스크롤 비활성화
+  // 사진 갤러리, 이미지 뷰어, API 정보 모달이 열렸을 때 body 스크롤 비활성화
   useEffect(() => {
-    if (showPhotoGallery || showApiInfoModal) {
+    if (showPhotoGallery || showImageViewer || showApiInfoModal || showProfileImageViewer || showProfileReportModal) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = 'unset'
@@ -223,7 +415,7 @@ const ChildcareDetailPage: React.FC = () => {
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [showPhotoGallery, showApiInfoModal])
+  }, [showPhotoGallery, showImageViewer, showApiInfoModal, showProfileImageViewer, showProfileReportModal])
   
   // 공유 시트가 열릴 때 배경 스크롤 비활성화
   useEffect(() => {
@@ -1648,10 +1840,35 @@ const ChildcareDetailPage: React.FC = () => {
                             <img
                               src={review.user_profile.profile_image_url}
                               alt={review.user_profile?.nickname || '프로필'}
-                              className="w-10 h-10 rounded-2xl object-cover"
+                              className="w-10 h-10 rounded-2xl object-cover cursor-pointer"
+                              onClick={() => {
+                                const profileImage = review.user_profile?.profile_image_url || ''
+                                const childrenImages = Array.isArray(review.user_profile?.children_info)
+                                  ? review.user_profile.children_info
+                                      .map((child: any) => child?.profile_image_url)
+                                      .filter((url: any) => url && url.trim() !== '')
+                                  : []
+                                const userName = review.user_profile?.nickname || review.user_profile?.full_name || '익명'
+                                const userId = review.user_id || ''
+                                openProfileImageViewer(profileImage, childrenImages, { id: userId, name: userName })
+                              }}
                             />
                           ) : (
-                            <div className="w-10 h-10 bg-gray-100 rounded-2xl flex items-center justify-center">
+                            <div 
+                              className="w-10 h-10 bg-gray-100 rounded-2xl flex items-center justify-center cursor-pointer"
+                              onClick={() => {
+                                const childrenImages = Array.isArray(review.user_profile?.children_info)
+                                  ? review.user_profile.children_info
+                                      .map((child: any) => child?.profile_image_url)
+                                      .filter((url: any) => url && url.trim() !== '')
+                                  : []
+                                if (childrenImages.length > 0) {
+                                  const userName = review.user_profile?.nickname || review.user_profile?.full_name || '익명'
+                                  const userId = review.user_id || ''
+                                  openProfileImageViewer('', childrenImages, { id: userId, name: userName })
+                                }
+                              }}
+                            >
                               <span className="text-sm font-medium text-gray-600">
                                 {(review.user_profile?.nickname?.charAt(0)) || (review.user_profile?.full_name?.charAt(0)) || '?'}
                               </span>
@@ -2783,6 +3000,207 @@ const ChildcareDetailPage: React.FC = () => {
                   사이트 방문
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 프로필 사진 전체보기 뷰어 */}
+      {showProfileImageViewer && profileImageViewerImages.length > 0 && (
+        <div 
+          className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center"
+          onClick={(e) => {
+            // 메뉴 외부 클릭 시 메뉴 닫기
+            if (!(e.target as Element).closest('.profile-image-viewer-menu-container')) {
+              setShowProfileImageViewerMenu(false)
+            }
+            // 배경 클릭 시 모달 닫기 (메뉴가 열려있지 않을 때만)
+            if (!showProfileImageViewerMenu) {
+              closeProfileImageViewer()
+            }
+          }}
+        >
+          {/* 닫기 버튼 */}
+          <button
+            onClick={closeProfileImageViewer}
+            className="absolute top-4 right-4 p-2 rounded-full hover:bg-white/10 text-white z-10"
+            aria-label="닫기"
+          >
+            <X className="w-6 h-6" />
+          </button>
+
+          {/* 점 3개 메뉴 버튼 (본인 프로필이 아닐 때만 표시) */}
+          {currentAuthUserId && profileImageViewerUser && (() => {
+            // 본인 프로필인지 확인
+            const isOwnProfile = profileImageViewerUser.id === currentAuthUserId
+            // 본인이 아니면 점3개 표시
+            return !isOwnProfile
+          })() && (
+            <div className="absolute top-4 right-16 profile-image-viewer-menu-container z-10">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowProfileImageViewerMenu(!showProfileImageViewerMenu)
+                }}
+                className="p-2 rounded-full hover:bg-white/10 text-white"
+                aria-label="옵션 메뉴"
+              >
+                <MoreHorizontal className="w-6 h-6" />
+              </button>
+              {showProfileImageViewerMenu && (
+                <div className="absolute right-0 top-10 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-20 min-w-[120px]">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleOpenProfileReportModal()
+                    }}
+                    className="w-full px-4 py-2 text-center text-sm text-red-600 hover:bg-red-50"
+                  >
+                    신고하기
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 이전 버튼 */}
+          {profileImageViewerImages.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setCurrentProfileImageIndex((currentProfileImageIndex - 1 + profileImageViewerImages.length) % profileImageViewerImages.length)
+              }}
+              className="absolute left-2 sm:left-4 p-3 rounded-full hover:bg-white/10 text-white z-10"
+              aria-label="이전 이미지"
+            >
+              <ChevronLeft className="w-7 h-7" />
+            </button>
+          )}
+
+          {/* 이미지 */}
+          <div 
+            className="flex-1 flex items-center justify-center max-w-full max-h-full px-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={profileImageViewerImages[currentProfileImageIndex]}
+              alt={`프로필 사진 ${currentProfileImageIndex === 0 ? '본인' : `자녀 ${currentProfileImageIndex}`}`}
+              className="max-w-full max-h-[70vh] object-contain"
+            />
+          </div>
+
+          {/* 다음 버튼 */}
+          {profileImageViewerImages.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setCurrentProfileImageIndex((currentProfileImageIndex + 1) % profileImageViewerImages.length)
+              }}
+              className="absolute right-2 sm:right-4 p-3 rounded-full hover:bg-white/10 text-white z-10"
+              aria-label="다음 이미지"
+            >
+              <ChevronRight className="w-7 h-7" />
+            </button>
+          )}
+
+          {/* 자녀 사진 썸네일 (아래쪽에 원형으로 표시) */}
+          {profileImageViewerImages.length > 1 && (
+            <div 
+              className="absolute bottom-8 left-0 right-0 flex justify-center gap-3 px-4 pb-4 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {profileImageViewerImages.map((image, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentProfileImageIndex(index)}
+                  className={`w-12 h-12 rounded-full overflow-hidden border-2 transition-all ${
+                    currentProfileImageIndex === index
+                      ? 'border-white scale-110 shadow-lg'
+                      : 'border-white/50 opacity-70 hover:opacity-100 hover:scale-105'
+                  }`}
+                  aria-label={index === 0 ? '본인 프로필' : `자녀 ${index} 프로필`}
+                >
+                  <img
+                    src={image}
+                    alt={index === 0 ? '본인 프로필' : `자녀 ${index} 프로필`}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 프로필 신고 모달 */}
+      {showProfileReportModal && profileImageViewerUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl p-4 max-w-lg w-full min-h-[500px] max-h-[95vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">프로필 신고</h3>
+              <button
+                onClick={handleCloseProfileReportModal}
+                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto mb-6">
+              <p className="text-gray-600 text-sm mb-4">
+                <strong>{profileImageViewerUser.name}</strong>님의 프로필을 신고합니다.
+              </p>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 유형
+                </label>
+                <select
+                  value={profileReportType}
+                  onChange={(e) => setProfileReportType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent"
+                >
+                  <option value="spam">스팸/광고성 게시글</option>
+                  <option value="inappropriate">부적절한 내용</option>
+                  <option value="inappropriate_image">부적절한 이미지 사용</option>
+                  <option value="harassment">괴롭힘/폭력</option>
+                  <option value="other">기타</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  신고 사유
+                </label>
+                <textarea
+                  value={profileReportReason}
+                  onChange={(e) => setProfileReportReason(e.target.value)}
+                  placeholder="신고 사유를 구체적으로 작성해주세요..."
+                  rows={6}
+                  maxLength={500}
+                  className="w-full px-2 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#fb8678] focus:border-transparent resize-none text-sm"
+                />
+                <div className="flex justify-between text-xs text-gray-400 font-semibold mt-1">
+                  <span>최대 텍스트 길이</span>
+                  <span>{profileReportReason.length}/500</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 flex-shrink-0">
+              <button
+                onClick={handleCloseProfileReportModal}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleSubmitProfileReport}
+                disabled={!profileReportReason.trim() || profileReportLoading}
+                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {profileReportLoading ? '신고 중...' : '신고하기'}
+              </button>
             </div>
           </div>
         </div>

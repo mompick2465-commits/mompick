@@ -170,9 +170,21 @@ const PostWrite = () => {
     if (!e.target.files || e.target.files.length === 0) return
     
     const file = e.target.files[0]
+    
+    // 이미지 파일 타입 검증
+    if (!file.type.startsWith('image/')) {
+      setError('이미지 파일만 선택할 수 있습니다.')
+      // input 초기화
+      if (e.target) {
+        e.target.value = ''
+      }
+      return
+    }
+    
     setCurrentImage(file)
     setSelectedAspectRatio(null)
     setShowImageEditor(true)
+    setError('') // 이전 에러 메시지 초기화
   }
 
   const createPreview = (aspectRatio: 'original' | '16:9' | '4:3' | '9:16') => {
@@ -757,10 +769,10 @@ const PostWrite = () => {
 
       {/* Image Editor Modal */}
       {showImageEditor && currentImage && (
-        <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
-          <div className="w-full h-full flex flex-col">
+        <div className="fixed inset-0 bg-black flex items-center justify-center z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+          <div className="w-full h-full flex flex-col" style={{ maxHeight: '100vh', height: '100%' }}>
             {/* Header - Instagram Style */}
-            <div className="bg-black/90 backdrop-blur-md border-b border-white/10 p-4">
+            <div className="bg-black/90 backdrop-blur-md border-b border-white/10 p-4 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <button
                   onClick={() => {
@@ -796,7 +808,7 @@ const PostWrite = () => {
             </div>
             
             {/* Image Preview - Full Screen with Instagram Style */}
-            <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-black via-gray-900 to-black p-4 relative">
+            <div className="flex-1 flex items-center justify-center bg-gradient-to-b from-black via-gray-900 to-black p-4 relative min-h-0 overflow-hidden">
               {selectedAspectRatio && previewCanvas ? (
                 <div className="relative">
                   <canvas
@@ -813,7 +825,7 @@ const PostWrite = () => {
                     className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
                     style={{
                       maxWidth: '90vw',
-                      maxHeight: '75vh'
+                      maxHeight: 'calc(100vh - 280px - env(safe-area-inset-bottom))'
                     }}
                   />
                   {/* Aspect Ratio Badge */}
@@ -831,7 +843,7 @@ const PostWrite = () => {
                     className="max-w-full max-h-full object-contain rounded-2xl"
                     style={{
                       maxWidth: '90vw',
-                      maxHeight: '75vh'
+                      maxHeight: 'calc(100vh - 280px - env(safe-area-inset-bottom))'
                     }}
                   />
                   {/* Original Badge */}
@@ -843,14 +855,14 @@ const PostWrite = () => {
             </div>
             
             {/* Bottom Controls - Soda Camera Style */}
-            <div className="bg-black/95 backdrop-blur-md border-t border-white/10 p-6">
+            <div className="bg-black/95 backdrop-blur-md border-t border-white/10 px-4 sm:px-6 pt-4 sm:pt-6 pb-4 sm:pb-6 flex-shrink-0 overflow-visible" style={{ paddingBottom: `max(1rem, calc(1rem + env(safe-area-inset-bottom)))` }}>
               {/* Aspect Ratio Options - Instagram Story Style */}
-              <div className="mb-6">
+              <div className="mb-4 sm:mb-6 overflow-visible">
                 <h4 className="text-sm font-medium text-white/80 mb-4 text-center">비율 선택</h4>
-                <div className="flex justify-center space-x-4">
+                <div className="flex justify-center space-x-2 sm:space-x-4 overflow-x-auto overflow-y-visible pb-2 pt-3 -mx-2 px-2">
                   <button
                     onClick={() => createPreview('original')}
-                    className={`flex flex-col items-center p-4 rounded-2xl transition-all duration-300 ${
+                    className={`flex flex-col items-center p-3 sm:p-4 rounded-2xl transition-all duration-300 flex-shrink-0 ${
                       selectedAspectRatio === 'original'
                         ? 'bg-[#fb8678] text-white shadow-lg shadow-[#fb8678]/30 scale-105'
                         : 'bg-white/10 text-white/80 hover:bg-white/20 hover:scale-105 border border-white/20'
@@ -864,7 +876,7 @@ const PostWrite = () => {
                   
                   <button
                     onClick={() => createPreview('16:9')}
-                    className={`flex flex-col items-center p-4 rounded-2xl transition-all duration-300 ${
+                    className={`flex flex-col items-center p-3 sm:p-4 rounded-2xl transition-all duration-300 flex-shrink-0 ${
                       selectedAspectRatio === '16:9'
                         ? 'bg-[#fb8678] text-white shadow-lg shadow-[#fb8678]/30 scale-105'
                         : 'bg-white/10 text-white/80 hover:bg-white/20 hover:scale-105 border border-white/20'
@@ -878,7 +890,7 @@ const PostWrite = () => {
                   
                   <button
                     onClick={() => createPreview('4:3')}
-                    className={`flex flex-col items-center p-4 rounded-2xl transition-all duration-300 ${
+                    className={`flex flex-col items-center p-3 sm:p-4 rounded-2xl transition-all duration-300 flex-shrink-0 ${
                       selectedAspectRatio === '4:3'
                         ? 'bg-[#fb8678] text-white shadow-lg shadow-[#fb8678]/30 scale-105'
                         : 'bg-white/10 text-white/80 hover:bg-white/20 hover:scale-105 border border-white/20'
@@ -892,7 +904,7 @@ const PostWrite = () => {
 
                   <button
                     onClick={() => createPreview('9:16')}
-                    className={`flex flex-col items-center p-4 rounded-2xl transition-all duration-300 ${
+                    className={`flex flex-col items-center p-3 sm:p-4 rounded-2xl transition-all duration-300 flex-shrink-0 ${
                       selectedAspectRatio === '9:16'
                         ? 'bg-[#fb8678] text-white shadow-lg shadow-[#fb8678]/30 scale-105'
                         : 'bg-white/10 text-white/80 hover:bg-white/20 hover:scale-105 border border-white/20'

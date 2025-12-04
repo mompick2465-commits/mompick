@@ -200,8 +200,8 @@ const PhoneLogin = () => {
             navigate('/main')
           }, 2500)
         } else {
-          // 프로필이 존재하지 않는 경우 회원가입 페이지로 이동
-          navigate('/signup?step=profile&phone=success')
+          // 프로필이 존재하지 않는 경우 약관 동의 페이지로 이동 (신규 사용자)
+          navigate('/signup?step=terms&phone=success')
         }
       } else {
         // 사용자 정보가 없는 경우 에러

@@ -2133,6 +2133,97 @@ const KindergartenMapPage: React.FC = () => {
     return { sidoCode: closestRegion.sidoCode, sggCode: closestRegion.sggCode }
   }
 
+  // 마커 오프셋 계산 함수 - 비슷한 위치의 마커들을 분산시킴
+  const calculateMarkerOffsets = (data: KindergartenMapData[]): Map<string, { lat: number; lng: number }> => {
+    const offsets = new Map<string, { lat: number; lng: number }>()
+    if (!mapInstance.current || data.length === 0) return offsets
+    
+    // 줌 레벨에 따라 오프셋 크기 조정
+    const zoomLevel = mapInstance.current.getLevel?.() ?? 3
+    // 줌 레벨이 높을수록(숫자가 작을수록) 작은 오프셋 사용
+    const baseOffsetRadius = 0.00015 // 약 17m 정도의 기본 오프셋 반경
+    const offsetRadius = baseOffsetRadius * Math.max(0.5, Math.min(2, zoomLevel / 3))
+    
+    const threshold = 0.0001 // 약 11m 정도의 거리 (위도/경도 차이)
+    
+    // 위치 그룹화
+    const groups: Array<KindergartenMapData[]> = []
+    const processed = new Set<string>()
+    
+    data.forEach((item, index) => {
+      const id = String(item.id)
+      if (processed.has(id)) return
+      
+      const group: KindergartenMapData[] = [item]
+      processed.add(id)
+      
+      // 같은 위치에 있는 다른 마커 찾기
+      data.forEach((other, otherIndex) => {
+        if (index === otherIndex) return
+        const otherId = String(other.id)
+        if (processed.has(otherId)) return
+        
+        const latDiff = Math.abs(item.lat - other.lat)
+        const lngDiff = Math.abs(item.lng - other.lng)
+        
+        if (latDiff < threshold && lngDiff < threshold) {
+          group.push(other)
+          processed.add(otherId)
+        }
+      })
+      
+      if (group.length > 1) {
+        groups.push(group)
+      }
+    })
+    
+    // 각 그룹 내에서 원형 패턴으로 분산
+    groups.forEach((group) => {
+      if (group.length === 1) return
+      
+      const centerLat = group[0].lat
+      const centerLng = group[0].lng
+      
+      group.forEach((item, idx) => {
+        const id = String(item.id)
+        
+        if (group.length === 2) {
+          // 2개만 있을 때는 양옆으로, 첫 번째는 왼쪽, 두 번째는 오른쪽
+          const offsetLng = idx === 0 ? -offsetRadius * 0.6 : offsetRadius * 0.6
+          offsets.set(id, {
+            lat: centerLat,
+            lng: centerLng + offsetLng
+          })
+        } else if (group.length === 3) {
+          // 3개일 때는 첫 번째는 중앙, 나머지는 양옆으로
+          if (idx === 0) {
+            // 첫 번째는 중앙 유지 (오프셋 없음)
+            return
+          } else {
+            const offsetLng = idx === 1 ? -offsetRadius * 0.8 : offsetRadius * 0.8
+            const offsetLat = offsetRadius * 0.3
+            offsets.set(id, {
+              lat: centerLat + offsetLat,
+              lng: centerLng + offsetLng
+            })
+          }
+        } else {
+          // 4개 이상일 때는 원형으로 분산
+          const angle = (2 * Math.PI * idx) / group.length
+          const offsetLat = offsetRadius * Math.cos(angle)
+          const offsetLng = offsetRadius * Math.sin(angle)
+          
+          offsets.set(id, {
+            lat: centerLat + offsetLat,
+            lng: centerLng + offsetLng
+          })
+        }
+      })
+    })
+    
+    return offsets
+  }
+
   // 이벤트 리스너 등록을 위한 ref들
   const addMarkersToMap = (data: KindergartenMapData[]) => {
     if (!mapInstance.current) return
@@ -2148,10 +2239,18 @@ const KindergartenMapPage: React.FC = () => {
     const existing = markerByIdRef.current
     const incomingIds = new Set<string>()
 
+    // 마커 오프셋 계산
+    const markerOffsets = calculateMarkerOffsets(data)
+
     data.forEach((kindergarten) => {
       console.log('📍 마커 생성:', kindergarten.name, '거리:', kindergarten.distance?.toFixed(2) || '0', 'km')
-      const position = new window.kakao.maps.LatLng(kindergarten.lat, kindergarten.lng)
       const id = String(kindergarten.id)
+      
+      // 오프셋 적용된 위치 사용
+      const offset = markerOffsets.get(id)
+      const finalLat = offset ? offset.lat : kindergarten.lat
+      const finalLng = offset ? offset.lng : kindergarten.lng
+      const position = new window.kakao.maps.LatLng(finalLat, finalLng)
       incomingIds.add(id)
 
       let entry = existing.get(id)
@@ -3682,12 +3781,12 @@ const KindergartenMapPage: React.FC = () => {
         <div 
           ref={listAreaRef}
           className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl transition-all duration-300 z-20 flex flex-col ${
-            listHeight === 1 ? 'h-[10%]' : 'h-2/3'
+            listHeight === 1 ? 'h-[10%] min-h-[80px]' : 'h-2/3'
           }`}
         >
           {/* 드래그 핸들 */}
           <div 
-            className="flex justify-center py-3 cursor-grab active:cursor-grabbing"
+            className="flex justify-center py-3 cursor-grab active:cursor-grabbing flex-shrink-0"
             onMouseDown={handleDragStart}
             onMouseUp={handleDragEnd}
             onMouseLeave={handleDragEnd}
@@ -3698,7 +3797,7 @@ const KindergartenMapPage: React.FC = () => {
           </div>
           
           {/* 정렬 필터 및 검색 결과 헤더 */}
-          <div className="px-4 pt-2 pb-2">
+          <div className="px-4 pt-2 pb-2 flex-shrink-0">
             <div className="flex items-center justify-between">
               {/* 정렬 필터 - 왼쪽 */}
               <div className="flex space-x-1.5">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Heart, MessageCircle, X, ChevronLeft, Bell, Settings } from 'lucide-react'
+import { Heart, MessageCircle, X, ChevronLeft, Bell, Settings, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { useNotification } from '../contexts/NotificationContext'
@@ -43,6 +43,8 @@ const Notifications = () => {
   const [activeTab, setActiveTab] = useState<TabType>('received')
   const [selectedNotice, setSelectedNotice] = useState<Notification | null>(null)
   const [showNoticeModal, setShowNoticeModal] = useState(false)
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
+  const [isDeletingAll, setIsDeletingAll] = useState(false)
   const navigate = useNavigate()
   const { refreshUnreadCount } = useNotification()
   
@@ -236,6 +238,55 @@ const Notifications = () => {
       await refreshUnreadCount()
     } catch (error) {
       console.error('알림 삭제 오류:', error)
+    }
+  }
+
+  // 받은 알림 모두 삭제
+  const deleteAllReceivedNotifications = async () => {
+    if (!currentUser) return
+    
+    setIsDeletingAll(true)
+    try {
+      const userId = currentUser.id || currentUser.auth_user_id
+      
+      // 받은 알림만 필터링 (notice 타입 제외)
+      const receivedNotificationIds = filteredNotifications
+        .filter(n => n.type !== 'notice')
+        .map(n => n.id)
+      
+      if (receivedNotificationIds.length === 0) {
+        setShowDeleteAllConfirm(false)
+        setIsDeletingAll(false)
+        return
+      }
+
+      // 모든 받은 알림 삭제
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .in('id', receivedNotificationIds)
+
+      if (error) {
+        console.error('알림 모두 삭제 오류:', error)
+        alert('알림 삭제 중 오류가 발생했습니다.')
+        setIsDeletingAll(false)
+        return
+      }
+
+      // 로컬 상태에서 제거
+      setNotifications(prev => 
+        prev.filter(notification => notification.type === 'notice')
+      )
+
+      // 전역 알림 개수 업데이트
+      await refreshUnreadCount()
+      
+      setShowDeleteAllConfirm(false)
+    } catch (error) {
+      console.error('알림 모두 삭제 오류:', error)
+      alert('알림 삭제 중 오류가 발생했습니다.')
+    } finally {
+      setIsDeletingAll(false)
     }
   }
   
@@ -503,6 +554,18 @@ const Notifications = () => {
         ) : (
           // 받은 알림 탭: 기존 형태
           <div className="space-y-3">
+            {/* 전체 삭제 버튼 - 알림이 있을 때만 표시 */}
+            {filteredNotifications.length > 0 && (
+              <div className="mb-4">
+                <button
+                  onClick={() => setShowDeleteAllConfirm(true)}
+                  className="w-full flex items-center justify-center space-x-2 px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-red-500/80 to-red-600/80 hover:from-red-600/90 hover:to-red-700/90 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>전체 지우기</span>
+                </button>
+              </div>
+            )}
             {filteredNotifications.map((notification) => {
               const content = getNotificationContent(notification)
               const swipeState = swipeStates[notification.id]
@@ -751,6 +814,44 @@ const Notifications = () => {
                   <X className="w-4 h-4 text-gray-700" />
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 모두 삭제 확인 모달 */}
+      {showDeleteAllConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 className="w-6 h-6 text-red-600" />
+              </div>
+              <h2 className="text-lg font-bold text-gray-900 mb-2">
+                받은 알림 모두 삭제
+              </h2>
+              <p className="text-sm text-gray-600">
+                받은 알림 {filteredNotifications.length}개를 모두 삭제하시겠습니까?
+                <br />
+                이 작업은 되돌릴 수 없습니다.
+              </p>
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowDeleteAllConfirm(false)}
+                disabled={isDeletingAll}
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors font-medium disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                onClick={deleteAllReceivedNotifications}
+                disabled={isDeletingAll}
+                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isDeletingAll ? '삭제 중...' : '삭제하기'}
+              </button>
             </div>
           </div>
         </div>

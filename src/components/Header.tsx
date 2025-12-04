@@ -117,8 +117,16 @@ const Header = () => {
 
 
   return (
-    <header className="bg-white shadow-[0_2px_8px_rgba(251,134,120,0.15)] sticky top-0 z-50 overflow-hidden">
-      <div className="px-4">
+    <div 
+      className="fixed top-0 left-0 right-0 z-50"
+      style={{
+        marginTop: `calc(-1 * env(safe-area-inset-top))`,
+        paddingTop: 'env(safe-area-inset-top)',
+        background: 'white',
+      }}
+    >
+      <header className="bg-white shadow-[0_2px_8px_rgba(251,134,120,0.15)]">
+        <div className="px-4">
         {/* Top Bar */}
         <div className="flex justify-between items-center h-12">
           <div className="flex items-center">
@@ -266,7 +274,7 @@ const Header = () => {
               }`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                <path d="M20 20C20 20.5523 19.5523 21 19 21H5C4.44772 21 4 20.5523 4 20V11H1L11.3273 1.6115C11.7087 1.26475 12.2913 1.26475 12.6727 1.6115L23 11H20V20ZM18 19V9.15745L12 3.7029L6 9.15745V19H18ZM12 17L8.64124 13.6412C7.76256 12.7625 7.76256 11.3379 8.64124 10.4592C9.51992 9.58056 10.9445 9.58056 11.8232 10.4592L12 10.636L12.1768 10.4592C13.0555 9.58056 14.4801 9.58056 15.3588 10.4592C16.2374 11.3379 16.2374 12.7625 15.3588 13.6412L12 17Z"></path>
+                <path d="M21 20C21 20.5523 20.5523 21 20 21H4C3.44772 21 3 20.5523 3 20V9.48907C3 9.18048 3.14247 8.88917 3.38606 8.69972L11.3861 2.47749C11.7472 2.19663 12.2528 2.19663 12.6139 2.47749L20.6139 8.69972C20.8575 8.88917 21 9.18048 21 9.48907V20ZM19 19V9.97815L12 4.53371L5 9.97815V19H19Z"></path>
               </svg>
             </button>
             
@@ -363,8 +371,9 @@ const Header = () => {
             </nav>
           </div>
         )}
-      </div>
-    </header>
+        </div>
+      </header>
+    </div>
   )
 }
 
