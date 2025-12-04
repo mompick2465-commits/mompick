@@ -208,6 +208,8 @@ const KindergartenMapPage: React.FC = () => {
   const activeSggCodeRef = useRef<string>('')
   const renderInProgressRef = useRef<boolean>(false)
   const mapInitializedRef = useRef<boolean>(false)
+  // 구단위 JSON 캐시 로딩 상태 (네트워크 요청 중일 때만 true)
+  const [isRegionCacheLoading, setIsRegionCacheLoading] = useState(false)
 
   const requestViewportLoadingOn = () => {
     setViewportLoading(true)
@@ -3174,7 +3176,12 @@ const KindergartenMapPage: React.FC = () => {
 
         let cacheResult = null
         if (regionCode) {
-          cacheResult = await fetchPlaygroundsFromCache(regionCode)
+          setIsRegionCacheLoading(true)
+          try {
+            cacheResult = await fetchPlaygroundsFromCache(regionCode)
+          } finally {
+            setIsRegionCacheLoading(false)
+          }
         }
 
 			const sggCode = region.kindergartenSggCode
@@ -3208,14 +3215,27 @@ const KindergartenMapPage: React.FC = () => {
 					regionCode,
 					sggCode,
 				})
+				setIsRegionCacheLoading(true)
 				const controller = new AbortController()
 				playgroundFetchControllersRef.current.add(controller)
 				try {
-					const result = await fetchPlaygroundsByRegionGroup({
-						regionCode,
-						sggCode,
-						signal: controller.signal,
+					// 전체 타임아웃 30초 설정
+					const timeoutPromise = new Promise<never>((_, reject) => {
+						setTimeout(() => {
+							controller.abort()
+							reject(new Error('구 단위 캐시 로드 타임아웃 (30초 초과)'))
+						}, 30000)
 					})
+
+					const result = await Promise.race([
+						fetchPlaygroundsByRegionGroup({
+							regionCode,
+							sggCode,
+							signal: controller.signal,
+						}),
+						timeoutPromise,
+					])
+
 					if (result.items.length) {
 						items = result.items
 						if (groupKey) {
@@ -3229,10 +3249,11 @@ const KindergartenMapPage: React.FC = () => {
 						})
 					}
 				} catch (error) {
-					if ((error as any)?.name === 'AbortError') {
+					if ((error as any)?.name === 'AbortError' || (error as Error).message.includes('타임아웃')) {
 						console.log('[PlaygroundMap] 구 단위 캐시 로드 중단', {
 							regionCode,
 							sggCode,
+							error: (error as Error).message,
 						})
 						if (groupKey) {
 							playgroundRegionGroupCacheRef.current.delete(groupKey)
@@ -3248,15 +3269,21 @@ const KindergartenMapPage: React.FC = () => {
 					})
 				} finally {
 					playgroundFetchControllersRef.current.delete(controller)
+					setIsRegionCacheLoading(false)
 				}
 			}
 
 			if (!items.length) {
 				console.log('[PlaygroundMap] 구 단위 캐시 실패 → 전체 스냅샷 로딩 시도')
-				items = await fetchAllPlaygroundsFromSnapshot()
-				console.log('[PlaygroundMap] 스냅샷 로드 결과', {
-					snapshotCount: items.length,
-				})
+				setIsRegionCacheLoading(true)
+				try {
+					items = await fetchAllPlaygroundsFromSnapshot()
+					console.log('[PlaygroundMap] 스냅샷 로드 결과', {
+						snapshotCount: items.length,
+					})
+				} finally {
+					setIsRegionCacheLoading(false)
+				}
 			}
 
         if (!items.length) {
@@ -3726,7 +3753,7 @@ const KindergartenMapPage: React.FC = () => {
       {/* 지도 영역 - 전체 화면 */}
       <div className="flex-1 relative">
         <div ref={mapRef} className="w-full h-full" />
-        {isPlaygroundSelected && isViewportLoading && (
+        {isPlaygroundSelected && isRegionCacheLoading && (
           <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-black/30 backdrop-blur-[2px]">
             <div className="rounded-full bg-white/95 px-5 py-3 shadow-lg flex items-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-[#fb8678]" />

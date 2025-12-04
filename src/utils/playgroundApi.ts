@@ -9,8 +9,8 @@ const PAGE_DOWNLOAD_CONCURRENCY = 4
 const STORAGE_TIMEOUT_MS = 10000
 const STORAGE_MAX_RETRIES = 3
 const STORAGE_RETRY_DELAY_MS = 600
-const REGION_GROUP_MAX_RETRIES = 2
-const REGION_GROUP_RETRY_DELAY_MS = 1200
+const REGION_GROUP_MAX_RETRIES = 1
+const REGION_GROUP_RETRY_DELAY_MS = 500
 
 let regionCodeCache: string[] | null = null
 let regionCodeCachePromise: Promise<string[]> | null = null
