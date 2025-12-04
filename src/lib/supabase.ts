@@ -62,7 +62,7 @@ export interface UserProfile {
   school_name?: string
   subject?: string
   experience_years?: number
-  // introduction?: string  // TODO: 데이터베이스에 introduction 컬럼 추가 후 활성화
+  introduction?: string
   created_at: string
   updated_at: string
 }

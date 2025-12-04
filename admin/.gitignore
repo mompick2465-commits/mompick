@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# .env.example은 Git에 커밋되어야 하므로 예외 처리
+!.env.example
 
 # vercel
 .vercel

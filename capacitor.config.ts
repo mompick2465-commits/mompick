@@ -2,6 +2,9 @@
 /// <reference types="@capacitor/status-bar" />
 import type { CapacitorConfig } from '@capacitor/cli';
 
+// 프로덕션 빌드에서는 디버깅 비활성화
+const isDevelopment = process.env.NODE_ENV !== 'production';
+
 const config: CapacitorConfig = {
   appId: 'com.mompick.app',
   appName: 'mompick',
@@ -14,7 +17,8 @@ const config: CapacitorConfig = {
     backgroundColor: '#ffffff',
     allowMixedContent: true,
     captureInput: false,
-    webContentsDebuggingEnabled: true, // 디버깅을 위해 활성화
+    // 프로덕션 빌드에서는 디버깅 비활성화 (개발 시에만 활성화)
+    webContentsDebuggingEnabled: isDevelopment,
     adjustMarginsForEdgeToEdge: 'auto',
     useLegacyBridge: false
   },

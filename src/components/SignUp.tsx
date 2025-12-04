@@ -1011,8 +1011,8 @@ const SignUp = () => {
         })) : null,
         school_name: userType === 'teacher' ? schoolName.trim() || '' : null,
         subject: userType === 'teacher' ? subject.trim() || '' : null,
-        experience_years: userType === 'teacher' ? parseInt(experienceYears) || 0 : null
-        // introduction: userType === 'teacher' ? introduction.trim() || '' : null  // TODO: 데이터베이스에 introduction 컬럼 추가 후 활성화
+        experience_years: userType === 'teacher' ? parseInt(experienceYears) || 0 : null,
+        introduction: userType === 'teacher' ? introduction.trim() || '' : null
       }
 
       // 디버깅을 위한 로그 출력

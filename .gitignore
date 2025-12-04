@@ -33,6 +33,8 @@ build
 .env
 .env.local
 .env.*.local
+# .env.example은 Git에 커밋되어야 하므로 예외 처리
+!.env.example
 
 # Firebase config files (보안상 Git에 포함하지 않음)
 google-services.json
