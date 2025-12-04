@@ -4,11 +4,11 @@ import {
   ChevronLeft,
   Loader2,
   MapPin,
-  Star,
   Clock,
   Heart,
   ImageOff,
-  Building
+  Building,
+  X
 } from 'lucide-react'
 import { fetchSigunguList, SigunguItem } from '../utils/childcareSigungu'
 import { smartChildcareLoader, LoadResult } from '../utils/smartChildcareLoader'
@@ -38,6 +38,7 @@ const ChildcareApplication: React.FC<ChildcareApplicationProps> = ({ onClose }) 
   // 찜 상태 관리
   const [favoriteCodes, setFavoriteCodes] = useState<Set<string>>(new Set())
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [showApplyModal, setShowApplyModal] = useState(false)
 
   // 현재 사용자 및 찜 목록 로드
   useEffect(() => {
@@ -438,7 +439,7 @@ const ChildcareApplication: React.FC<ChildcareApplicationProps> = ({ onClose }) 
                     {/* 평점과 거리 (유사 스타일) */}
                     <div className="flex items-center gap-3 mb-2">
                       <div className="flex items-center gap-1">
-                        <Star className="h-3 w-3 text-yellow-400 fill-current" />
+                        <Heart className="h-3 w-3 text-[#fb8678] fill-current" />
                         <span className="text-xs font-medium text-gray-900">{Number(c.__avg || 0).toFixed(1)}</span>
                         <span className="text-xs text-gray-500">({c.__count || 0})</span>
                       </div>
@@ -471,13 +472,7 @@ const ChildcareApplication: React.FC<ChildcareApplicationProps> = ({ onClose }) 
                     {/* 액션 버튼 */}
                     <div className="flex gap-2 mt-2">
                       <button
-                        onClick={() => {
-                          const code = c.crcode || c.stcode
-                          const arcode = selectedRegion?.arcode
-                          if (code) {
-                            navigate(`/childcare/${code}${arcode ? `?arcode=${encodeURIComponent(arcode)}` : ''}`)
-                          }
-                        }}
+                        onClick={() => setShowApplyModal(true)}
                         className="flex-1 py-2 px-4 bg-[#fb8678] text-white rounded-lg text-sm font-medium hover:bg-[#e67567] transition-colors"
                       >
                         신청하기
@@ -523,6 +518,53 @@ const ChildcareApplication: React.FC<ChildcareApplicationProps> = ({ onClose }) 
         {/* 하단 여백 */}
         <div className="h-20" />
       </div>
+
+      {/* 신청하기 팝업 모달 */}
+      {showApplyModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn" onClick={() => setShowApplyModal(false)}>
+          <div className="bg-white rounded-[2rem] max-w-sm w-full shadow-2xl transform transition-all animate-slideUp border border-gray-100/50" onClick={(e) => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="px-4 pt-4 pb-2 border-b border-gray-100/60 bg-gradient-to-b from-white to-gray-50/30 rounded-t-[2rem]">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                  간편 신청
+                </h3>
+                <button
+                  onClick={() => setShowApplyModal(false)}
+                  className="p-1.5 hover:bg-gray-100/80 rounded-full transition-all duration-200 hover:scale-110 active:scale-95"
+                >
+                  <X className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600 transition-colors" />
+                </button>
+              </div>
+            </div>
+
+            {/* 내용 */}
+            <div className="px-4 py-4 bg-gradient-to-b from-white to-gray-50/20 rounded-b-[2rem]">
+              <div className="text-center space-y-3">
+                <div className="flex justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-12 h-12 text-[#fb8678]">
+                    <path d="M12 2C17.5228 2 22 6.47715 22 12C22 14.1364 21.3301 16.1162 20.1889 17.741L17 12H20C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C14.1502 20 16.1023 19.1517 17.5398 17.7716L18.5379 19.567C16.7848 21.083 14.4995 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2ZM12 7C13.6569 7 15 8.34315 15 10V11H16V16H8V11H9V10C9 8.34315 10.3431 7 12 7ZM12 9C11.4872 9 11.0645 9.38604 11.0067 9.88338L11 10V11H13V10C13 9.48716 12.614 9.06449 12.1166 9.00673L12 9Z"></path>
+                  </svg>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-sm font-semibold text-gray-900">
+                    간단하게 신청할수 있는 맘픽 서비스가 되겠습니다.
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    개발 및 연구중에 있습니다.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowApplyModal(false)}
+                  className="w-full px-3 py-2.5 rounded-xl text-center bg-gradient-to-r from-[#fb8678] to-[#e67567] text-white hover:from-[#e67567] hover:to-[#d46456] transition-all duration-300 font-semibold shadow-sm hover:shadow-md active:scale-[0.98] text-xs"
+                >
+                  확인
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

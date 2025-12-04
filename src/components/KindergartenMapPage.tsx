@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react'
-import { MapPin, Search, Filter, Heart, Phone, Clock, Users, ChevronLeft, Navigation, Locate, CheckCircle, Loader2 } from 'lucide-react'
+import { MapPin, Search, Filter, Heart, Phone, Clock, Users, ChevronLeft, Navigation, Locate, CheckCircle, Loader2, X, Check, RotateCcw, GraduationCap, Globe, Trees, BookOpen } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchKindergartenData, findRegionCodes, findNearbyKindergartens, KindergartenInfo, regionCodes } from '../utils/kindergartenApi'
 import { reverseGeocodeWithCache, getGeocodingWithCache, getNearbyRegions } from '../utils/geocodingCache'
@@ -321,7 +321,9 @@ const KindergartenMapPage: React.FC = () => {
   const [filteredKindergartens, setFilteredKindergartens] = useState<KindergartenMapData[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [sortBy, setSortBy] = useState<'distance' | 'rating'>('distance')
+  const [sortBy, setSortBy] = useState<'distance' | 'rating' | 'category'>('distance')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
   const [selectedType, setSelectedType] = useState<'all' | 'kindergarten' | 'childcare' | 'playground'>(initialType as any)
   const [currentLocation, setCurrentLocation] = useState<LatLng | null>(null)
   const [selectedKindergarten, setSelectedKindergarten] = useState<KindergartenMapData | null>(null)
@@ -3479,17 +3481,56 @@ const KindergartenMapPage: React.FC = () => {
       filtered = filtered.filter(k => k.type === selectedType)
     }
 
+    // 카테고리 필터링 (유치원 타입이고 카테고리가 선택된 경우)
+    if (selectedCategory && selectedType === 'kindergarten') {
+      const keyword = selectedCategory.toLowerCase()
+      const keywordVariants = [keyword, keyword.replace(/\s/g, '')]
+      
+      filtered = filtered.filter(k => {
+        const name = (k.name || '').toLowerCase()
+        return keywordVariants.some(kw => name.includes(kw))
+      })
+    }
+
     // 정렬
     filtered.sort((a, b) => {
       if (sortBy === 'distance') {
         return (a.distance || 0) - (b.distance || 0)
-      } else {
+      } else if (sortBy === 'rating') {
         return (b.rating || 0) - (a.rating || 0)
+      } else if (sortBy === 'category' && selectedCategory && selectedType === 'kindergarten') {
+        // 카테고리순: 선택한 키워드가 이름에 포함된 항목을 우선 정렬, 그 다음 거리순
+        const aName = (a.name || '').toLowerCase()
+        const bName = (b.name || '').toLowerCase()
+        const keyword = selectedCategory.toLowerCase()
+        
+        // 키워드 매칭 (공백 제거 버전도 체크)
+        const keywordVariants = [keyword, keyword.replace(/\s/g, '')]
+        const aHasKeyword = keywordVariants.some(k => aName.includes(k))
+        const bHasKeyword = keywordVariants.some(k => bName.includes(k))
+        
+        if (aHasKeyword && !bHasKeyword) return -1
+        if (!aHasKeyword && bHasKeyword) return 1
+        // 둘 다 포함하거나 둘 다 포함하지 않으면 기존 순서 유지 (거리순)
+        return (a.distance || 0) - (b.distance || 0)
+      } else {
+        return (a.distance || 0) - (b.distance || 0)
       }
     })
 
     setFilteredKindergartens(filtered)
-  }, [kindergartens, searchTerm, selectedType, sortBy])
+  }, [kindergartens, searchTerm, selectedType, sortBy, selectedCategory])
+
+  // 타입이 유치원이 아닐 때 카테고리 선택 초기화
+  useEffect(() => {
+    if (selectedType !== 'kindergarten') {
+      setSelectedCategory(null)
+      if (sortBy === 'category') {
+        setSortBy('distance')
+      }
+      setShowCategoryModal(false)
+    }
+  }, [selectedType, sortBy])
 
   // 검색어 변경 시 마커 업데이트
   useEffect(() => {
@@ -3848,6 +3889,21 @@ const KindergartenMapPage: React.FC = () => {
                 >
                   칭찬순
                 </button>
+                {/* 카테고리순은 유치원 타입일 때만 표시 */}
+                {selectedType === 'kindergarten' && (
+                <button
+                  onClick={() => {
+                    setShowCategoryModal(true)
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                      sortBy === 'category' && selectedCategory
+                      ? 'bg-[#fb8678] text-white shadow-sm'
+                      : 'bg-white text-gray-600 border border-[#fb8678]/20 hover:bg-[#fb8678]/5'
+                  }`}
+                >
+                    {selectedCategory ? `${selectedCategory}순` : '카테고리순'}
+                </button>
+                )}
               </div>
               {/* 검색 결과 텍스트 - 오른쪽 */}
               <h3 className="font-semibold text-gray-900">
@@ -4223,6 +4279,108 @@ const KindergartenMapPage: React.FC = () => {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 카테고리 선택 모달 */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fadeIn" onClick={() => setShowCategoryModal(false)}>
+          <div className="bg-white rounded-[2rem] max-w-sm w-full shadow-2xl transform transition-all animate-slideUp border border-gray-100/50" onClick={(e) => e.stopPropagation()}>
+            {/* 헤더 */}
+            <div className="px-5 pt-5 pb-2.5 border-b border-gray-100/60 bg-gradient-to-b from-white to-gray-50/30 rounded-t-[2rem]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+                    카테고리 선택
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium">원하는 유치원 유형을 선택하세요</p>
+                </div>
+                <button
+                  onClick={() => setShowCategoryModal(false)}
+                  className="p-2 hover:bg-gray-100/80 rounded-full transition-all duration-200 hover:scale-110 active:scale-95"
+                >
+                  <X className="w-4 h-4 text-gray-400 hover:text-gray-600 transition-colors" />
+                </button>
+              </div>
+            </div>
+
+            {/* 카테고리 목록 */}
+            <div className="pt-2 px-5 pb-5 space-y-2 bg-gradient-to-b from-white to-gray-50/20 rounded-b-[2rem]">
+              {[
+                { name: '병설유치원', keyword: '병설', icon: GraduationCap, gradient: 'from-blue-500 to-blue-600', bgGradient: 'from-blue-50 to-blue-100/50', borderColor: 'border-blue-200/60', textColor: 'text-blue-700', iconBg: 'bg-blue-500/10' },
+                { name: '영어유치원', keyword: '영어', icon: Globe, gradient: 'from-purple-500 to-purple-600', bgGradient: 'from-purple-50 to-purple-100/50', borderColor: 'border-purple-200/60', textColor: 'text-purple-700', iconBg: 'bg-purple-500/10' },
+                { name: '숲유치원', keyword: '숲', icon: Trees, gradient: 'from-green-500 to-emerald-600', bgGradient: 'from-green-50 to-emerald-100/50', borderColor: 'border-green-200/60', textColor: 'text-green-700', iconBg: 'bg-green-500/10' },
+                { name: '몬테소리유치원', keyword: '몬테소리', icon: BookOpen, gradient: 'from-orange-500 to-amber-600', bgGradient: 'from-orange-50 to-amber-100/50', borderColor: 'border-orange-200/60', textColor: 'text-orange-700', iconBg: 'bg-orange-500/10' }
+              ].map(({ name, keyword, icon: Icon, gradient, bgGradient, borderColor, textColor, iconBg }) => {
+                const isSelected = selectedCategory === keyword
+                return (
+                  <button
+                    key={name}
+                    onClick={() => {
+                      setSelectedCategory(keyword)
+                      setSortBy('category')
+                      setShowCategoryModal(false)
+                    }}
+                    className={`w-full px-4 py-3 rounded-xl text-left transition-all duration-300 flex items-center justify-between group relative overflow-hidden ${
+                      isSelected
+                        ? `bg-gradient-to-r ${gradient} text-white scale-[1.02] ring-2 ring-white/50`
+                        : `bg-gradient-to-r ${bgGradient} border-2 ${borderColor} ${textColor} hover:shadow-lg hover:scale-[1.02] hover:border-opacity-100`
+                    }`}
+                    style={isSelected ? {
+                      boxShadow: '0 4px 20px rgba(251, 134, 120, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1)'
+                    } : {}}
+                  >
+                    {/* 선택된 상태의 빛나는 효과 */}
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-gradient-to-r from-white/20 via-transparent to-white/20 animate-shimmer"></div>
+                    )}
+                    
+                    <div className="flex items-center space-x-3 relative z-10">
+                      <Icon className={`w-5 h-5 transition-all duration-300 ${isSelected ? 'text-white' : textColor}`} />
+                      <div className="flex-1">
+                        <div className={`font-bold text-sm leading-tight ${isSelected ? 'text-white' : 'text-gray-900'}`}>
+                          {name}순
+                        </div>
+                        <div className={`text-[10px] mt-0.5 font-medium ${isSelected ? 'text-white/90' : 'text-gray-600'}`}>
+                          {keyword} 키워드 포함 유치원
+                        </div>
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <div className="flex-shrink-0 relative z-10 animate-scaleIn">
+                        <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg ring-2 ring-white/50">
+                          <Check className="w-3.5 h-3.5 text-[#fb8678]" />
+                        </div>
+                      </div>
+                    )}
+                    {!isSelected && (
+                      <div className="flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <div className="w-2 h-2 rounded-full bg-current opacity-60"></div>
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+
+              {/* 구분선 */}
+              <div>
+                <div className="border-t border-gray-200/60"></div>
+              </div>
+
+              {/* 초기화 버튼 */}
+              <button
+                onClick={() => {
+                  setSelectedCategory(null)
+                  setSortBy('distance')
+                  setShowCategoryModal(false)
+                }}
+                className="w-full px-4 py-3 rounded-xl text-center bg-gradient-to-r from-gray-50 to-gray-100/50 text-gray-700 hover:from-gray-100 hover:to-gray-200 hover:text-gray-900 transition-all duration-300 flex items-center justify-center space-x-2 border-2 border-gray-200/60 hover:border-gray-300/80 font-semibold shadow-sm hover:shadow-md active:scale-[0.98] -mt-2 text-sm"
+              >
+                <RotateCcw className="w-3.5 h-3.5 transition-transform duration-300 group-hover:rotate-180" />
+                <span>초기화</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
