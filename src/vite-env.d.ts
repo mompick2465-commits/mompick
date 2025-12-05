@@ -12,6 +12,7 @@ declare namespace NodeJS {
     readonly REACT_APP_KAKAO_MAP_KEY?: string
     readonly REACT_APP_CHILDCARE_API_KEY?: string
     readonly REACT_APP_CHILDCARE_DETAIL_API_KEY?: string
+    readonly REACT_APP_WEB_URL?: string
   }
 }
 

@@ -336,15 +336,6 @@ const PhoneLogin = () => {
                 }}
               />
             </div>
-            
-            <motion.h2
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.4 }}
-              className="text-2xl font-bold text-gray-900"
-            >
-              로그인 완료!
-            </motion.h2>
           </motion.div>
         </motion.div>
       </div>

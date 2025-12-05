@@ -37,10 +37,38 @@ const AuthCallback = () => {
         if (window.location.hash) {
           console.log('URL 해시:', window.location.hash)
           
-          // 해시에서 에러 정보 추출
+          // 해시에서 파라미터 추출
           const hashParams = new URLSearchParams(window.location.hash.substring(1))
           const error = hashParams.get('error')
           const errorDescription = hashParams.get('error_description')
+          const accessToken = hashParams.get('access_token')
+          const refreshToken = hashParams.get('refresh_token')
+          
+          // 해시에 토큰이 있는 경우 (Supabase가 Site URL로 리다이렉트한 경우)
+          if (accessToken && refreshToken) {
+            console.log('🔍 해시에서 토큰 발견, 세션 설정 시도')
+            
+            try {
+              // Supabase에 세션 설정
+              const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+              })
+              
+              if (sessionError) {
+                console.error('세션 설정 오류:', sessionError)
+                throw sessionError
+              }
+              
+              if (sessionData.session) {
+                console.log('✅ 해시에서 토큰으로 세션 설정 성공')
+                // 세션 확인으로 넘어감 (아래 코드 계속 실행)
+              }
+            } catch (tokenError) {
+              console.error('토큰으로 세션 설정 실패:', tokenError)
+              // 에러가 있어도 계속 진행 (아래 세션 확인 코드 실행)
+            }
+          }
           
           if (error) {
             console.error('OAuth 에러 발생:', error, errorDescription)
@@ -63,18 +91,31 @@ const AuthCallback = () => {
               errorMessage = '로그인이 취소되었습니다.'
               errorCode = 'access_denied'
             } else if (error === 'invalid_request') {
-              errorMessage = '잘못된 요청입니다. 다시 시도해주세요.'
+              // invalid_request 에러는 해시에 토큰이 있으면 무시할 수 있음
+              if (!accessToken) {
+                errorMessage = '잘못된 요청입니다. 다시 시도해주세요.'
+              } else {
+                // 토큰이 있으면 에러를 무시하고 계속 진행
+                console.log('⚠️ invalid_request 에러이지만 토큰이 있어 계속 진행')
+              }
             }
             
-            if (isMounted) {
+            // 토큰이 없고 에러가 있는 경우에만 에러 처리
+            if (error && !accessToken && isMounted) {
               setStatus('error')
               setMessage(errorMessage)
               
               setTimeout(() => {
                 navigate(`/signup?step=auth-method&error=${errorCode}`)
-              }, 4000) // 애플 설정 오류는 메시지를 더 길게 표시
+              }, 4000)
             }
-            return
+            
+            // 토큰이 있으면 에러를 무시하고 계속 진행
+            if (accessToken) {
+              console.log('💡 해시에 토큰이 있어 에러를 무시하고 계속 진행')
+            } else if (error) {
+              return
+            }
           }
         }
         
@@ -296,15 +337,6 @@ const AuthCallback = () => {
                 }}
               />
             </div>
-            
-            <motion.h2
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.4 }}
-              className="text-2xl font-bold text-gray-900"
-            >
-              {message.includes('로그인되었습니다') ? '로그인 완료!' : '계정 연동 완료!'}
-            </motion.h2>
           </motion.div>
         )}
 
@@ -369,15 +401,6 @@ const AuthCallback = () => {
                 }}
               />
             </div>
-            
-            <motion.h2
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.8 }}
-              className="text-2xl font-bold text-gray-900"
-            >
-              인증 실패!
-            </motion.h2>
           </motion.div>
         )}
       </motion.div>

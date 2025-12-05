@@ -40,6 +40,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { addFavorite, removeFavorite, isFavorited } from '../utils/favorites'
 import { ChildcareDetailSummary } from '../utils/childcareDetailApi'
+import { getShareUrl } from '../utils/shareUrl'
 
 const ChildcareDetailPage: React.FC = () => {
   const { stcode } = useParams<{ stcode: string }>()
@@ -427,18 +428,18 @@ const ChildcareDetailPage: React.FC = () => {
   }, [showShareSheet])
 
   // 공유 핸들러들
-  const getShareUrl = () => {
+  const getShareUrlForChildcare = () => {
     try {
       const a = searchParams.get('arcode')
-      const base = `${window.location.origin}/childcare/${stcode}`
+      const base = getShareUrl(`/childcare/${stcode}`, '')
       return a ? `${base}?arcode=${encodeURIComponent(a)}` : base
     } catch {
-      return `${window.location.origin}/childcare/${stcode}`
+      return getShareUrl(`/childcare/${stcode}`, '')
     }
   }
   const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(getShareUrl())
+      await navigator.clipboard.writeText(getShareUrlForChildcare())
       alert('공유 링크가 복사되었습니다.')
     } catch {}
     setShowShareSheet(false)
@@ -450,7 +451,7 @@ const ChildcareDetailPage: React.FC = () => {
       const shareText = `${childcare?.name || '어린이집'} 정보를 공유합니다.`
       const navWithShare = navigator as Navigator & { share?: (data: { title?: string; text?: string; url?: string }) => Promise<void> }
       if (navWithShare.share) {
-        await navWithShare.share({ title: shareTitle, text: shareText, url: getShareUrl() })
+        await navWithShare.share({ title: shareTitle, text: shareText, url: getShareUrlForChildcare() })
         setShowShareSheet(false)
         return
       }
@@ -461,14 +462,14 @@ const ChildcareDetailPage: React.FC = () => {
 
   const handleEmailShare = () => {
     const subject = `맘픽 · ${childcare?.name || '어린이집'} 정보 공유`
-    const body = `${childcare?.name || '어린이집'} 정보를 공유합니다.\n\n${getShareUrl()}`
+    const body = `${childcare?.name || '어린이집'} 정보를 공유합니다.\n\n${getShareUrlForChildcare()}`
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
     setShowShareSheet(false)
   }
 
   const handleBandShare = () => {
     const text = `${childcare?.name || '어린이집'} 정보를 공유합니다.`
-    const u = getShareUrl()
+    const u = getShareUrlForChildcare()
     const url = `https://band.us/plugin/share?body=${encodeURIComponent(text)}%0A${encodeURIComponent(u)}&route=${encodeURIComponent(u)}`
     window.open(url, '_blank')
     setShowShareSheet(false)
@@ -483,8 +484,8 @@ const ChildcareDetailPage: React.FC = () => {
           content: {
             title: '맘픽 · 어린이집',
             description: childcare?.name || '어린이집 정보 공유',
-            imageUrl: `${window.location.origin}/headericon.png`,
-            link: { mobileWebUrl: getShareUrl(), webUrl: getShareUrl() }
+            imageUrl: `${getShareUrl('', '')}/headericon.png`,
+            link: { mobileWebUrl: getShareUrlForChildcare(), webUrl: getShareUrlForChildcare() }
           }
         })
         setShowShareSheet(false)
@@ -496,7 +497,7 @@ const ChildcareDetailPage: React.FC = () => {
   }
 
   const handleSmsShare = () => {
-    const body = `${childcare?.name || '어린이집'} 정보를 공유합니다.\n\n${getShareUrl()}`
+    const body = `${childcare?.name || '어린이집'} 정보를 공유합니다.\n\n${getShareUrlForChildcare()}`
     window.location.href = `sms:?&body=${encodeURIComponent(body)}`
     setShowShareSheet(false)
   }
@@ -2433,7 +2434,7 @@ const ChildcareDetailPage: React.FC = () => {
               </div>
               <div className="mb-2">
                 <div className="text-base font-semibold text-black pl-1 pb-1">링크 공유</div>
-                <div className="mt-1 text-xs text-gray-600 break-all bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">{getShareUrl()}</div>
+                <div className="mt-1 text-xs text-gray-600 break-all bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">{getShareUrlForChildcare()}</div>
               </div>
               <div className="flex gap-3 py-2 overflow-x-auto scrollbar-hide">
                 <button onClick={handleKakaoShare} className="w-1/4 flex-shrink-0 flex flex-col items-center justify-center p-3 rounded-xl border border-gray-100 hover:bg-gray-50">

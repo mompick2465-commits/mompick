@@ -381,7 +381,10 @@ async function fetchKindergartenData(
   pageCnt: number = 100,
   currentPage: number = 1
 ): Promise<ApiResponse> {
-  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY') || 'your_api_key_here'
+  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY')
+  if (!API_KEY) {
+    throw new Error('REACT_APP_KINDERGARTEN_API_KEY 환경변수가 설정되지 않았습니다.')
+  }
   const baseUrl = 'https://e-childschoolinfo.moe.go.kr/api/notice/basicInfo2.do'
   
   const params = new URLSearchParams({

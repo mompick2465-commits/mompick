@@ -43,6 +43,7 @@ import {
 } from '../utils/kindergartenReviewApi'
 import { supabase } from '../lib/supabase'
 import { addFavorite, removeFavorite, isFavorited } from '../utils/favorites'
+import { getShareUrl } from '../utils/shareUrl'
 
 const KindergartenDetailPage: React.FC = () => {
   const { kindercode } = useParams<{ kindercode: string }>()
@@ -1175,7 +1176,7 @@ const KindergartenDetailPage: React.FC = () => {
   // 공유 버튼 클릭 핸들러: 안드로이드 기본 공유 시트 호출 (카카오톡/지메일/밴드 등)
   const handleShareClick = async () => {
     try {
-      const shareUrl = `${window.location.origin}${location.pathname}${location.search}`
+      const shareUrl = getShareUrl(location.pathname, location.search)
       const shareTitle = `맘픽 · ${kindergarten?.name || '유치원'} 상세정보`
       const shareText = `${kindergarten?.name || '유치원'} 정보를 공유합니다.`
 
@@ -1203,7 +1204,7 @@ const KindergartenDetailPage: React.FC = () => {
     } catch (error) {
       // 사용자가 공유를 취소한 경우 등은 무시, 그 외에는 복사로 대체
       try {
-        const shareUrl = `${window.location.origin}${location.pathname}${location.search}`
+        const shareUrl = getShareUrl(location.pathname, location.search)
         await navigator.clipboard.writeText(shareUrl)
         alert('공유 링크가 복사되었습니다.')
       } catch {}
@@ -1211,8 +1212,9 @@ const KindergartenDetailPage: React.FC = () => {
   }
 
   // 개별 공유 핸들러들
+  const shareUrl = getShareUrl(location.pathname, location.search)
+  
   const handleCopyLink = async () => {
-    const shareUrl = `${window.location.origin}${location.pathname}${location.search}`
     try {
       await navigator.clipboard.writeText(shareUrl)
       alert('공유 링크가 복사되었습니다.')
@@ -1230,23 +1232,20 @@ const KindergartenDetailPage: React.FC = () => {
 
   const handleEmailShare = () => {
     const subject = `맘픽 · ${kindergarten?.name || '유치원'} 정보 공유`
-    const url = `${window.location.origin}${location.pathname}${location.search}`
-    const body = `${kindergarten?.name || '유치원'} 정보를 공유합니다.\n\n${url}`
+    const body = `${kindergarten?.name || '유치원'} 정보를 공유합니다.\n\n${shareUrl}`
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
     setShowShareSheet(false)
   }
 
   const handleBandShare = () => {
-    const url = `${window.location.origin}${location.pathname}${location.search}`
     const text = `${kindergarten?.name || '유치원'} 정보를 공유합니다.`
-    const bandUrl = `https://band.us/plugin/share?body=${encodeURIComponent(text + '\n' + url)}&route=${encodeURIComponent(url)}`
+    const bandUrl = `https://band.us/plugin/share?body=${encodeURIComponent(text + '\n' + shareUrl)}&route=${encodeURIComponent(shareUrl)}`
     window.open(bandUrl, '_blank')
     setShowShareSheet(false)
   }
 
   const handleKakaoShare = async () => {
     const Kakao = (window as any).Kakao
-    const url = `${window.location.origin}${location.pathname}${location.search}`
     const title = `${kindergarten?.name || '유치원'} 정보`
     try {
       if (Kakao?.isInitialized?.() && Kakao?.Share) {
@@ -1255,8 +1254,8 @@ const KindergartenDetailPage: React.FC = () => {
           content: {
             title,
             description: '맘픽 유치원 상세정보',
-            imageUrl: `${window.location.origin}/headericon.png`,
-            link: { mobileWebUrl: url, webUrl: url }
+            imageUrl: `${getShareUrl('', '')}/headericon.png`,
+            link: { mobileWebUrl: shareUrl, webUrl: shareUrl }
           }
         })
         setShowShareSheet(false)
@@ -3279,7 +3278,7 @@ const KindergartenDetailPage: React.FC = () => {
             <div className="mb-2">
               <div className="text-base font-semibold text-black pl-1 pb-1">링크 공유</div>
               <div className="mt-1 text-xs text-gray-600 break-all bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
-                {`${window.location.origin}${location.pathname}${location.search}`}
+                {shareUrl}
               </div>
             </div>
             <div className="flex gap-3 py-2 overflow-x-auto scrollbar-hide">

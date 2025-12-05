@@ -81,7 +81,11 @@ async function fetchListAndFilterByKinderCode(
   sggCode: number,
   timing?: string
 ): Promise<any | null> {
-  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY') || 'c5aef787ac5a4473a74264b4b5bfce74'
+  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY')
+  if (!API_KEY) {
+    console.error('❌ REACT_APP_KINDERGARTEN_API_KEY 환경변수가 설정되지 않음')
+    return null
+  }
   const baseUrl = `https://e-childschoolinfo.moe.go.kr/api/notice/${endpoint}.do`
   const params = new URLSearchParams({
     key: API_KEY,
@@ -110,8 +114,12 @@ async function fetchListAndFilterByKinderCode(
 }
 
 // 특정 지역에서 유치원 정보 조회
-async function fetchKindergartenDetailByRegion(kindercode: string, sidoCode: number, sggCode: number): Promise<ApiResponse> {
-  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY') || 'c5aef787ac5a4473a74264b4b5bfce74'
+async function fetchKindergartenDetailByRegion(kindercode: string, sidoCode: number, sggCode: number): Promise<ApiResponse | null> {
+  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY')
+  if (!API_KEY) {
+    console.error('❌ REACT_APP_KINDERGARTEN_API_KEY 환경변수가 설정되지 않음')
+    return null
+  }
   
   console.log(`🔍 특정 지역에서 유치원 검색: ${kindercode} (${sidoCode}-${sggCode})`)
   
@@ -166,8 +174,12 @@ async function fetchKindergartenDetailByRegion(kindercode: string, sidoCode: num
 }
 
 // 교육부 API 호출 함수 - 여러 엔드포인트 통합 사용
-async function fetchKindergartenDetail(kindercode: string): Promise<ApiResponse> {
-  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY') || 'c5aef787ac5a4473a74264b4b5bfce74'
+async function fetchKindergartenDetail(kindercode: string): Promise<ApiResponse | null> {
+  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY')
+  if (!API_KEY) {
+    console.error('❌ REACT_APP_KINDERGARTEN_API_KEY 환경변수가 설정되지 않음')
+    return null
+  }
   
   console.log(`🔍 교육부 API 호출 시작: ${kindercode}`)
   
@@ -329,8 +341,12 @@ interface ComprehensiveData {
 }
 
 // 여러 API 엔드포인트를 통합하여 유치원 상세 정보 조회
-async function fetchComprehensiveKindergartenDetail(kindercode: string, sidoCode: number, sggCode: number): Promise<ComprehensiveData> {
-  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY') || 'c5aef787ac5a4473a74264b4b5bfce74'
+async function fetchComprehensiveKindergartenDetail(kindercode: string, sidoCode: number, sggCode: number): Promise<ComprehensiveData | null> {
+  const API_KEY = Deno.env.get('REACT_APP_KINDERGARTEN_API_KEY')
+  if (!API_KEY) {
+    console.error('❌ REACT_APP_KINDERGARTEN_API_KEY 환경변수가 설정되지 않음')
+    return null
+  }
   
   console.log(`🔍 통합 유치원 상세 정보 조회: ${kindercode} (${sidoCode}-${sggCode})`)
   
@@ -511,7 +527,12 @@ Deno.serve(async (req) => {
         // 지역 정보가 제공된 경우 통합 조회 사용
         console.log(`📍 지역 정보 제공됨, 통합 조회 시작: ${sidoCode}-${sggCode}`)
         comprehensiveData = await fetchComprehensiveKindergartenDetail(kindercode, sidoCode, sggCode)
-        basicInfo = comprehensiveData.basicInfo2
+        if (comprehensiveData) {
+          basicInfo = comprehensiveData.basicInfo2
+        } else {
+          // 통합 조회 실패 시 전체 검색으로 폴백
+          basicInfo = await fetchKindergartenDetail(kindercode)
+        }
       } else {
         // 지역 정보가 없는 경우 전체 검색
         basicInfo = await fetchKindergartenDetail(kindercode)

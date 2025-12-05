@@ -4,6 +4,7 @@ import { Heart, MessageCircle, MapPin, ChevronLeft, ChevronRight, Share2, MoreVe
 import { supabase } from '../lib/supabase'
 import { useLikeContext } from '../contexts/LikeContext'
 import { createLikeNotification, createReplyNotification } from '../utils/notifications'
+import { getShareUrl } from '../utils/shareUrl'
 
 interface CommunityPost {
   id: string
@@ -148,7 +149,7 @@ const PostDetail = () => {
   }
 
   // 공유 핸들러들
-  const postShareUrl = `${window.location.origin}/community/post/${postId}?category=${encodeURIComponent(post?.category || '')}`
+  const postShareUrl = getShareUrl(`/community/post/${postId}`, `category=${encodeURIComponent(post?.category || '')}`)
   const handleCopyLink = async () => {
     try { await navigator.clipboard.writeText(postShareUrl); alert('공유 링크가 복사되었습니다.') } catch {}
     setShowShareSheet(false)
@@ -162,13 +163,18 @@ const PostDetail = () => {
     window.open(bandUrl, '_blank')
     setShowShareSheet(false)
   }
+  const handleSmsShare = () => {
+    const body = `맘픽 커뮤니티 게시글을 공유합니다.\n\n${postShareUrl}`
+    window.location.href = `sms:?body=${encodeURIComponent(body)}`
+    setShowShareSheet(false)
+  }
   const handleKakaoShare = async () => {
     const Kakao = (window as any).Kakao
     try {
       if (Kakao?.isInitialized?.() && Kakao?.Share) {
         await Kakao.Share.sendDefault({
           objectType: 'feed',
-          content: { title: '맘픽 · 커뮤니티', description: post?.content?.slice(0, 70) || '게시글 공유', imageUrl: `${window.location.origin}/headericon.png`, link: { mobileWebUrl: postShareUrl, webUrl: postShareUrl } }
+          content: { title: '맘픽 · 커뮤니티', description: post?.content?.slice(0, 70) || '게시글 공유', imageUrl: `${getShareUrl('', '')}/headericon.png`, link: { mobileWebUrl: postShareUrl, webUrl: postShareUrl } }
         })
         setShowShareSheet(false)
         return
@@ -1785,6 +1791,10 @@ const PostDetail = () => {
             <button onClick={handleBandShare} className="w-1/4 flex-shrink-0 flex flex-col items-center justify-center p-3 rounded-xl border border-gray-100 hover:bg-gray-50">
               <span className="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center font-bold">B</span>
               <span className="mt-2 text-xs text-gray-700">BAND</span>
+            </button>
+            <button onClick={handleSmsShare} className="w-1/4 flex-shrink-0 flex flex-col items-center justify-center p-3 rounded-xl border border-gray-100 hover:bg-gray-50">
+              <span className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center text-[11px] font-bold">SMS</span>
+              <span className="mt-2 text-xs text-gray-700">문자</span>
             </button>
             <button onClick={handleCopyLink} className="w-1/4 flex-shrink-0 flex flex-col items-center justify-center p-3 rounded-xl border border-gray-100 hover:bg-gray-50">
               <span className="w-10 h-10 rounded-full bg-gray-800 text-white flex items-center justify-center font-bold">🔗</span>

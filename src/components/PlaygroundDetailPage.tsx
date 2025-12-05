@@ -27,6 +27,7 @@ import {
 import type { KindergartenMapData } from '../types/kakaoMap'
 import { supabase } from '../lib/supabase'
 import { addFavorite, isFavorited, removeFavorite } from '../utils/favorites'
+import { getShareUrl } from '../utils/shareUrl'
 import {
 	getPlaygroundReviews,
 	getPlaygroundReviewStats,
@@ -456,9 +457,11 @@ const PlaygroundDetailPage: React.FC = () => {
 	}, [detail])
 
 	const shareUrl = useMemo(() => {
-		if (typeof window === 'undefined') return ''
+		if (typeof window === 'undefined' || !normalizedId) return ''
 		try {
-			return window.location.href
+			const pathname = `/playground/${encodeURIComponent(normalizedId)}`
+			const search = searchParamsKey ? `?${searchParamsKey}` : ''
+			return getShareUrl(pathname, search)
 		} catch {
 			return ''
 		}
@@ -850,7 +853,7 @@ const PlaygroundDetailPage: React.FC = () => {
 					content: {
 						title: '맘픽 · 놀이시설',
 						description: facilityName,
-						imageUrl: `${window.location.origin}/headericon.png`,
+						imageUrl: `${getShareUrl('', '')}/headericon.png`,
 						link: { mobileWebUrl: shareUrl, webUrl: shareUrl },
 					},
 				})

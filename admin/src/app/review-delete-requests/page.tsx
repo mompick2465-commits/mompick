@@ -134,26 +134,21 @@ export default function ReviewDeleteRequestsPage() {
 
   const fetchDailyReviewData = async () => {
     try {
-      const response = await fetch('/api/dashboard')
+      const response = await fetch('/api/reviews/daily')
       if (response.ok) {
         const data = await response.json()
-        // dailyContent에서 칭찬 작성 데이터 추출하여 일별 증가량 계산
-        if (data.stats?.dailyContent && data.stats.dailyContent.length > 0) {
-          const reviewData = data.stats.dailyContent.map((item: any, index: number) => {
-            const currentCount = item['칭찬 작성[누적]'] || 0
-            const previousCount = index > 0 
-              ? (data.stats.dailyContent[index - 1]['칭찬 작성[누적]'] || 0)
-              : 0
-            return {
-              date: item.date,
-              count: currentCount - previousCount // 일별 증가량
-            }
-          })
-          setDailyReviewData(reviewData)
+        if (data.dailyData && data.dailyData.length > 0) {
+          setDailyReviewData(data.dailyData)
+        } else {
+          setDailyReviewData([])
         }
+      } else {
+        console.error('일별 칭찬 데이터 조회 실패')
+        setDailyReviewData([])
       }
     } catch (error) {
       console.error('일별 칭찬 데이터 조회 오류:', error)
+      setDailyReviewData([])
     }
   }
 
@@ -413,6 +408,139 @@ export default function ReviewDeleteRequestsPage() {
         <p className="text-gray-600">사용자가 요청한 칭찬 삭제요청을 검토하고 처리하세요.</p>
       </div>
 
+      {/* 차트 섹션 - 가로 2개 배치 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+        {/* 최근 7일간 칭찬 작성 추이 */}
+                <div>
+                  <h3 className="text-xs font-medium text-gray-700 mb-2">최근 7일간 칭찬 작성 추이</h3>
+                  {dailyReviewData.length > 0 ? (
+                    <div className="w-full" style={{ minHeight: '320px', height: '320px' }}>
+                      <ResponsiveContainer width="100%" height={320}>
+                      <LineChart
+                        data={dailyReviewData}
+                        margin={{ top: 10, right: 10, bottom: 10, left: 0 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis 
+                          dataKey="date" 
+                          fontSize={10}
+                          stroke="#6b7280"
+                          tick={{ fill: '#6b7280' }}
+                        />
+                        <YAxis 
+                          fontSize={10}
+                          stroke="#6b7280"
+                          tick={{ fill: '#6b7280' }}
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#fff', 
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '6px',
+                            fontSize: '11px'
+                          }}
+                          formatter={(value: number) => [`${value}개`, '일별 칭찬 작성']}
+                          labelStyle={{ color: '#374151', fontWeight: 'bold' }}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="count" 
+                          stroke="#8b5cf6" 
+                          strokeWidth={2}
+                          dot={{ fill: '#8b5cf6', r: 5, strokeWidth: 2, stroke: '#fff' }}
+                          activeDot={{ r: 7 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="w-full flex items-center justify-center text-gray-400 border border-gray-200 rounded-lg text-xs" style={{ height: '320px' }}>
+                      데이터 로딩 중...
+                    </div>
+                  )}
+                </div>
+                
+        {/* 최근 5개 칭찬 타입별 분포 */}
+                {latestReviews.length > 0 && (() => {
+                  const reviewTypeCounts = latestReviews.reduce((acc, review) => {
+                    const type = review.review_type
+                    acc[type] = (acc[type] || 0) + 1
+                    return acc
+                  }, {} as Record<string, number>)
+                  
+                  const pieData = [
+                    { name: '놀이시설', value: reviewTypeCounts.playground || 0, color: '#6366f1' },
+                    { name: '유치원', value: reviewTypeCounts.kindergarten || 0, color: '#8b5cf6' },
+                    { name: '어린이집', value: reviewTypeCounts.childcare || 0, color: '#a78bfa' }
+                  ].filter(item => item.value > 0)
+                  
+                  return (
+            <div className="flex items-center" style={{ minHeight: '320px', height: '320px' }}>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200 w-full">
+                      <h3 className="text-xs font-medium text-gray-700 mb-3">최근 5개 칭찬 타입별 분포</h3>
+                      <div className="flex items-center gap-4">
+                        {/* 도넛 차트 */}
+                        <div className="flex-shrink-0">
+                          {pieData.length > 0 ? (
+                            <ResponsiveContainer width={100} height={100}>
+                              <PieChart>
+                                <Pie
+                                  data={pieData}
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={30}
+                                  outerRadius={45}
+                                  paddingAngle={2}
+                                  dataKey="value"
+                                  startAngle={90}
+                                  endAngle={-270}
+                                >
+                                  {pieData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip 
+                                  contentStyle={{ 
+                                    backgroundColor: '#fff', 
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: '6px',
+                                    fontSize: '11px'
+                                  }}
+                                  formatter={(value: number) => `${value}개`}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          ) : (
+                            <div className="w-24 h-24 flex items-center justify-center text-gray-400 text-xs">데이터 없음</div>
+                          )}
+                        </div>
+                        {/* 타입별 개수 정보 */}
+                        <div className="flex-1">
+                          <p className="text-2xl font-bold text-purple-700 mb-1">
+                            {latestReviews.length}개
+                          </p>
+                          <p className="text-[10px] text-gray-500 mb-3">최근 칭찬 수</p>
+                          <div className="space-y-1.5">
+                            {pieData.map((item) => (
+                              <div key={item.name} className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }}></div>
+                                  <p className="text-[10px] text-gray-600">{item.name}</p>
+                                </div>
+                                <p className="text-sm font-semibold" style={{ color: item.color }}>
+                                  {item.value}개
+                                </p>
+                              </div>
+                            ))}
+                    </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+
       {/* 최신 칭찬 목록 */}
       {latestReviews.length > 0 && (
         <Card className="mb-6">
@@ -420,10 +548,8 @@ export default function ReviewDeleteRequestsPage() {
             <CardTitle>최신 칭찬 목록</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              {/* 왼쪽: 칭찬 목록 */}
-              <div className="lg:col-span-3 space-y-2">
-                {latestReviews.map((review) => (
+            <div className="space-y-2">
+              {latestReviews.map((review) => (
                 <div
                   key={review.id}
                   className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 cursor-pointer transition-colors"
@@ -499,138 +625,7 @@ export default function ReviewDeleteRequestsPage() {
                     </div>
                   </div>
                 </div>
-                ))}
-              </div>
-              {/* 오른쪽: 일별 칭찬 작성 점 그래프 및 도넛 그래프 */}
-              <div className="lg:col-span-2 flex flex-col gap-4">
-                {/* 점 그래프 */}
-                <div>
-                  <h3 className="text-xs font-medium text-gray-700 mb-2">최근 7일간 칭찬 작성 추이</h3>
-                  {dailyReviewData.length > 0 ? (
-                    <div className="w-full" style={{ minHeight: '320px', height: '320px' }}>
-                      <ResponsiveContainer width="100%" height={320}>
-                      <LineChart
-                        data={dailyReviewData}
-                        margin={{ top: 10, right: 10, bottom: 10, left: 0 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis 
-                          dataKey="date" 
-                          fontSize={10}
-                          stroke="#6b7280"
-                          tick={{ fill: '#6b7280' }}
-                        />
-                        <YAxis 
-                          fontSize={10}
-                          stroke="#6b7280"
-                          tick={{ fill: '#6b7280' }}
-                        />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: '#fff', 
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '6px',
-                            fontSize: '11px'
-                          }}
-                          formatter={(value: number) => [`${value}개`, '일별 칭찬 작성']}
-                          labelStyle={{ color: '#374151', fontWeight: 'bold' }}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="count" 
-                          stroke="#8b5cf6" 
-                          strokeWidth={2}
-                          dot={{ fill: '#8b5cf6', r: 5, strokeWidth: 2, stroke: '#fff' }}
-                          activeDot={{ r: 7 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="w-full flex items-center justify-center text-gray-400 border border-gray-200 rounded-lg text-xs" style={{ height: '320px' }}>
-                      데이터 로딩 중...
-                    </div>
-                  )}
-                </div>
-                
-                {/* 도넛 그래프 - 최근 5개 칭찬 타입별 분포 */}
-                {latestReviews.length > 0 && (() => {
-                  const reviewTypeCounts = latestReviews.reduce((acc, review) => {
-                    const type = review.review_type
-                    acc[type] = (acc[type] || 0) + 1
-                    return acc
-                  }, {} as Record<string, number>)
-                  
-                  const pieData = [
-                    { name: '놀이시설', value: reviewTypeCounts.playground || 0, color: '#6366f1' },
-                    { name: '유치원', value: reviewTypeCounts.kindergarten || 0, color: '#8b5cf6' },
-                    { name: '어린이집', value: reviewTypeCounts.childcare || 0, color: '#a78bfa' }
-                  ].filter(item => item.value > 0)
-                  
-                  return (
-                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
-                      <h3 className="text-xs font-medium text-gray-700 mb-3">최근 5개 칭찬 타입별 분포</h3>
-                      <div className="flex items-center gap-4">
-                        {/* 도넛 차트 */}
-                        <div className="flex-shrink-0">
-                          {pieData.length > 0 ? (
-                            <ResponsiveContainer width={100} height={100}>
-                              <PieChart>
-                                <Pie
-                                  data={pieData}
-                                  cx="50%"
-                                  cy="50%"
-                                  innerRadius={30}
-                                  outerRadius={45}
-                                  paddingAngle={2}
-                                  dataKey="value"
-                                  startAngle={90}
-                                  endAngle={-270}
-                                >
-                                  {pieData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={entry.color} />
-                                  ))}
-                                </Pie>
-                                <Tooltip 
-                                  contentStyle={{ 
-                                    backgroundColor: '#fff', 
-                                    border: '1px solid #e5e7eb',
-                                    borderRadius: '6px',
-                                    fontSize: '11px'
-                                  }}
-                                  formatter={(value: number) => `${value}개`}
-                                />
-                              </PieChart>
-                            </ResponsiveContainer>
-                          ) : (
-                            <div className="w-24 h-24 flex items-center justify-center text-gray-400 text-xs">데이터 없음</div>
-                          )}
-                        </div>
-                        {/* 타입별 개수 정보 */}
-                        <div className="flex-1">
-                          <p className="text-2xl font-bold text-purple-700 mb-1">
-                            {latestReviews.length}개
-                          </p>
-                          <p className="text-[10px] text-gray-500 mb-3">최근 칭찬 수</p>
-                          <div className="space-y-1.5">
-                            {pieData.map((item) => (
-                              <div key={item.name} className="flex items-center justify-between">
-                                <div className="flex items-center gap-1.5">
-                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }}></div>
-                                  <p className="text-[10px] text-gray-600">{item.name}</p>
-                                </div>
-                                <p className="text-sm font-semibold" style={{ color: item.color }}>
-                                  {item.value}개
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })()}
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>

@@ -567,11 +567,23 @@ const SignUp = () => {
     setAuthMethod('kakao')
 
     try {
+      const { Capacitor } = await import('@capacitor/core')
+      const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
+      
+      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
+      // 앱 환경에서만 redirectTo 사용
+      const options: any = {}
+      if (!isWeb) {
+        const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
+        options.redirectTo = getOAuthRedirectUrl()
+        console.log('카카오 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
+      } else {
+        console.log('카카오 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'kakao',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
+        options
       })
 
       if (error) throw error
@@ -593,11 +605,23 @@ const SignUp = () => {
     setAuthMethod('google')
 
     try {
+      const { Capacitor } = await import('@capacitor/core')
+      const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
+      
+      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
+      // 앱 환경에서만 redirectTo 사용
+      const options: any = {}
+      if (!isWeb) {
+        const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
+        options.redirectTo = getOAuthRedirectUrl()
+        console.log('구글 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
+      } else {
+        console.log('구글 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
+        options
       })
 
       if (error) throw error
@@ -619,11 +643,23 @@ const SignUp = () => {
     setAuthMethod('apple')
 
     try {
+      const { Capacitor } = await import('@capacitor/core')
+      const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
+      
+      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
+      // 앱 환경에서만 redirectTo 사용
+      const options: any = {}
+      if (!isWeb) {
+        const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
+        options.redirectTo = getOAuthRedirectUrl()
+        console.log('애플 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
+      } else {
+        console.log('애플 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
+        options
       })
 
       if (error) throw error
@@ -1317,15 +1353,6 @@ const SignUp = () => {
                 }}
               />
             </div>
-            
-            <motion.h2
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 1.4 }}
-              className="text-2xl font-bold text-gray-900"
-            >
-              로그인 완료!
-            </motion.h2>
           </motion.div>
         </motion.div>
       </div>

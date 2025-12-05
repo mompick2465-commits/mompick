@@ -1,9 +1,32 @@
 'use client'
 
 import { Bell, User, LogOut } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { useState } from 'react'
 
 export default function Header() {
+  const router = useRouter()
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+      })
+
+      if (response.ok) {
+        router.push('/login')
+        router.refresh()
+      }
+    } catch (error) {
+      console.error('로그아웃 오류:', error)
+    } finally {
+      setLoggingOut(false)
+    }
+  }
+
   return (
     <header className="bg-white shadow-sm border-b">
       <div className="flex h-16 items-center justify-between px-6">
@@ -21,7 +44,13 @@ export default function Header() {
               <User className="h-5 w-5 text-gray-500" />
               <span className="text-sm font-medium text-gray-700">관리자</span>
             </div>
-            <Button variant="ghost" size="icon">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              title="로그아웃"
+            >
               <LogOut className="h-5 w-5" />
             </Button>
           </div>

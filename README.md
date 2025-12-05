@@ -58,6 +58,10 @@ npm install
 REACT_APP_SUPABASE_URL=your_supabase_url_here
 REACT_APP_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 
+# 실제 웹사이트 URL (앱에서 OAuth 리다이렉트용, 선택사항)
+# 설정하지 않으면 Supabase URL에서 자동 추출
+REACT_APP_WEB_URL=https://your-domain.com
+
 # 카카오맵 API 키 (JavaScript 키 사용)
 REACT_APP_KAKAO_MAP_KEY=your_kakao_map_js_key_here
 
@@ -91,19 +95,42 @@ REACT_APP_CHILDCARE_SEARCH_API_KEY=your_childcare_search_api_key_here
 1. [유치원알리미](https://e-childschoolinfo.moe.go.kr)에서 API 키 발급
 2. 발급받은 키를 `REACT_APP_KINDERGARTEN_API_KEY`에 설정
 
-### 3. OAuth 설정 (카카오톡, 구글 로그인)
+### 3. OAuth 설정 (카카오톡, 구글, 애플 로그인)
 Supabase 대시보드에서 OAuth 제공자를 설정해야 합니다:
+
+**⚠️ 중요**: 앱에서 OAuth 로그인을 사용하려면 **실제 웹사이트 URL도 반드시 등록**해야 합니다!
 
 #### 카카오톡 OAuth 설정
 1. [Kakao Developers](https://developers.kakao.com)에서 애플리케이션 생성
-2. 플랫폼 > Web > 사이트 도메인에 `http://localhost:3000` 추가
-3. 카카오 로그인 > Redirect URI에 `http://localhost:3000/auth/callback` 추가
+2. 플랫폼 > Web > 사이트 도메인에 다음 추가:
+   - `http://localhost:3000` (개발용)
+   - `https://your-domain.com` (프로덕션용)
+3. 카카오 로그인 > Redirect URI에 다음 추가:
+   - `http://localhost:3000/auth/callback` (개발용)
+   - `https://your-domain.com/auth/callback` (프로덕션 웹용)
+   - `https://your-domain.com/auth/callback` (앱용 - 앱에서도 이 URL 사용)
 4. Client ID와 Client Secret을 Supabase 대시보드 > Authentication > Providers > Kakao에 입력
 
 #### 구글 OAuth 설정
 1. [Google Cloud Console](https://console.cloud.google.com)에서 OAuth 2.0 클라이언트 ID 생성
-2. 승인된 리디렉션 URI에 `http://localhost:3000/auth/callback` 추가
-3. Client ID와 Client Secret을 Supabase 대시보드 > Authentication > Providers > Google에 입력
+2. 승인된 리디렉션 URI에 다음 추가:
+   - `http://localhost:3000/auth/callback` (개발용)
+   - `https://your-domain.com/auth/callback` (프로덕션 웹용)
+   - `https://your-domain.com/auth/callback` (앱용)
+3. 승인된 JavaScript 원본에 다음 추가:
+   - `http://localhost:3000` (개발용)
+   - `https://your-domain.com` (프로덕션용)
+4. Client ID와 Client Secret을 Supabase 대시보드 > Authentication > Providers > Google에 입력
+
+#### 애플 OAuth 설정
+1. [Apple Developer](https://developer.apple.com)에서 서비스 ID 생성
+2. Sign in with Apple 설정에서 Website URLs에 추가:
+   - `https://your-domain.com/auth/callback` (프로덕션 웹용 및 앱용)
+3. Return URLs에 추가:
+   - `https://your-domain.com/auth/callback`
+4. Client ID와 Client Secret을 Supabase 대시보드 > Authentication > Providers > Apple에 입력
+
+**📚 상세한 OAuth 리다이렉트 URL 설정 가이드는 [OAUTH_REDIRECT_URL_SETUP.md](./docs[md]/guides/OAUTH_REDIRECT_URL_SETUP.md) 문서를 참고하세요.**
 
 ### 4. Supabase 설정
 

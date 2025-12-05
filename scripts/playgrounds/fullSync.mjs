@@ -1,19 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 
+// 환경 변수에서만 가져오기 (하드코딩 금지)
 const SUPABASE_URL =
 	process.env.SUPABASE_URL ||
 	process.env.REACT_APP_SUPABASE_URL ||
-	process.env.NEXT_PUBLIC_SUPABASE_URL ||
-	'https://fxkftrczarwuytnufprv.supabase.co'
+	process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY =
 	process.env.SUPABASE_SERVICE_ROLE_KEY ||
-	process.env.SUPABASE_SERVICE_KEY ||
-	'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ4a2Z0cmN6YXJ3dXl0bnVmcHJ2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjA4Mzk3OCwiZXhwIjoyMDcxNjU5OTc4fQ.wsNIMgBDrJUbM75OKZPV4_3sfVmQIdGQX-fCkWa2lpU'
+	process.env.SUPABASE_SERVICE_KEY
 const DATA_GOV_API_KEY =
 	process.env.DATA_GOV_API_KEY ||
 	process.env.PLAYGROUND_API_KEY ||
-	process.env.DATA_GOV_ENCODING_KEY ||
-	'871d8ed90d26dbd90139adcee2baa7417debb531a49c4d937b6c34de102fbcd4'
+	process.env.DATA_GOV_ENCODING_KEY
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !DATA_GOV_API_KEY) {
 	console.error(

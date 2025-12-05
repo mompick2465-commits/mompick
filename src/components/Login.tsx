@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Phone } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { getOAuthRedirectUrl } from '../utils/oauthRedirect'
 
 const Login = () => {
   const navigate = useNavigate()
@@ -20,16 +21,32 @@ const Login = () => {
     setError('')
     
     try {
+      const { Capacitor } = await import('@capacitor/core')
+      const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
+      
+      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
+      // 앱 환경에서만 redirectTo 사용
+      const options: any = {}
+      if (!isWeb) {
+        const redirectUrl = getOAuthRedirectUrl()
+        console.log('카카오 로그인 시작 (앱), 리다이렉트 URL:', redirectUrl)
+        options.redirectTo = redirectUrl
+      } else {
+        console.log('카카오 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'kakao',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
+        options
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('카카오 OAuth 오류:', error)
+        throw error
+      }
     } catch (error: any) {
-      setError('카카오 로그인에 실패했습니다')
+      console.error('카카오 로그인 오류:', error)
+      setError(`카카오 로그인에 실패했습니다: ${error.message || '알 수 없는 오류'}`)
       setLoading(false)
     }
   }
@@ -39,16 +56,32 @@ const Login = () => {
     setError('')
     
     try {
+      const { Capacitor } = await import('@capacitor/core')
+      const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
+      
+      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
+      // 앱 환경에서만 redirectTo 사용
+      const options: any = {}
+      if (!isWeb) {
+        const redirectUrl = getOAuthRedirectUrl()
+        console.log('구글 로그인 시작 (앱), 리다이렉트 URL:', redirectUrl)
+        options.redirectTo = redirectUrl
+      } else {
+        console.log('구글 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
+        options
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('구글 OAuth 오류:', error)
+        throw error
+      }
     } catch (error: any) {
-      setError('구글 로그인에 실패했습니다')
+      console.error('구글 로그인 오류:', error)
+      setError(`구글 로그인에 실패했습니다: ${error.message || '알 수 없는 오류'}`)
       setLoading(false)
     }
   }
@@ -58,16 +91,32 @@ const Login = () => {
     setError('')
     
     try {
+      const { Capacitor } = await import('@capacitor/core')
+      const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
+      
+      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
+      // 앱 환경에서만 redirectTo 사용
+      const options: any = {}
+      if (!isWeb) {
+        const redirectUrl = getOAuthRedirectUrl()
+        console.log('애플 로그인 시작 (앱), 리다이렉트 URL:', redirectUrl)
+        options.redirectTo = redirectUrl
+      } else {
+        console.log('애플 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
+        options
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('애플 OAuth 오류:', error)
+        throw error
+      }
     } catch (error: any) {
-      setError('애플 로그인에 실패했습니다')
+      console.error('애플 로그인 오류:', error)
+      setError(`애플 로그인에 실패했습니다: ${error.message || '알 수 없는 오류'}`)
       setLoading(false)
     }
   }
