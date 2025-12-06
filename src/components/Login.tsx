@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Phone } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { getOAuthRedirectUrl } from '../utils/oauthRedirect'
 
 const Login = () => {
   const navigate = useNavigate()
@@ -24,15 +23,17 @@ const Login = () => {
       const { Capacitor } = await import('@capacitor/core')
       const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
       
-      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
-      // 앱 환경에서만 redirectTo 사용
+      // 웹과 앱 모두 redirectTo를 명시적으로 설정
       const options: any = {}
-      if (!isWeb) {
-        const redirectUrl = getOAuthRedirectUrl()
-        console.log('카카오 로그인 시작 (앱), 리다이렉트 URL:', redirectUrl)
-        options.redirectTo = redirectUrl
+      if (isWeb) {
+        // 웹 환경: 현재 웹사이트의 /auth/callback으로 리다이렉트
+        options.redirectTo = `${window.location.origin}/auth/callback`
+        console.log('카카오 로그인 시작 (웹), 리다이렉트 URL:', options.redirectTo)
       } else {
-        console.log('카카오 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+        // 앱 환경: 딥링크 사용
+        const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
+        options.redirectTo = getOAuthRedirectUrl()
+        console.log('카카오 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
       }
       
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -59,15 +60,17 @@ const Login = () => {
       const { Capacitor } = await import('@capacitor/core')
       const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
       
-      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
-      // 앱 환경에서만 redirectTo 사용
+      // 웹과 앱 모두 redirectTo를 명시적으로 설정
       const options: any = {}
-      if (!isWeb) {
-        const redirectUrl = getOAuthRedirectUrl()
-        console.log('구글 로그인 시작 (앱), 리다이렉트 URL:', redirectUrl)
-        options.redirectTo = redirectUrl
+      if (isWeb) {
+        // 웹 환경: 현재 웹사이트의 /auth/callback으로 리다이렉트
+        options.redirectTo = `${window.location.origin}/auth/callback`
+        console.log('구글 로그인 시작 (웹), 리다이렉트 URL:', options.redirectTo)
       } else {
-        console.log('구글 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+        // 앱 환경: 딥링크 사용
+        const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
+        options.redirectTo = getOAuthRedirectUrl()
+        console.log('구글 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
       }
       
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -94,15 +97,17 @@ const Login = () => {
       const { Capacitor } = await import('@capacitor/core')
       const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
       
-      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
-      // 앱 환경에서만 redirectTo 사용
+      // 웹과 앱 모두 redirectTo를 명시적으로 설정
       const options: any = {}
-      if (!isWeb) {
-        const redirectUrl = getOAuthRedirectUrl()
-        console.log('애플 로그인 시작 (앱), 리다이렉트 URL:', redirectUrl)
-        options.redirectTo = redirectUrl
+      if (isWeb) {
+        // 웹 환경: 현재 웹사이트의 /auth/callback으로 리다이렉트
+        options.redirectTo = `${window.location.origin}/auth/callback`
+        console.log('애플 로그인 시작 (웹), 리다이렉트 URL:', options.redirectTo)
       } else {
-        console.log('애플 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+        // 앱 환경: 딥링크 사용
+        const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
+        options.redirectTo = getOAuthRedirectUrl()
+        console.log('애플 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
       }
       
       const { data, error } = await supabase.auth.signInWithOAuth({

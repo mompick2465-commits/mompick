@@ -567,18 +567,32 @@ const SignUp = () => {
     setAuthMethod('kakao')
 
     try {
+      // 회원가입 페이지에서는 기존 세션을 완전히 제거하여 새로운 계정으로 가입할 수 있도록 함
+      console.log('회원가입: 기존 세션 제거 중...')
+      await supabase.auth.signOut()
+      localStorage.removeItem('isLoggedIn')
+      localStorage.removeItem('userProfile')
+      
       const { Capacitor } = await import('@capacitor/core')
       const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
       
-      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
-      // 앱 환경에서만 redirectTo 사용
+      // 웹과 앱 모두 redirectTo를 명시적으로 설정
       const options: any = {}
-      if (!isWeb) {
+      if (isWeb) {
+        // 웹 환경: 현재 웹사이트의 /auth/callback으로 리다이렉트
+        options.redirectTo = `${window.location.origin}/auth/callback`
+        console.log('카카오 로그인 시작 (웹), 리다이렉트 URL:', options.redirectTo)
+      } else {
+        // 앱 환경: 딥링크 사용
         const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
         options.redirectTo = getOAuthRedirectUrl()
         console.log('카카오 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
-      } else {
-        console.log('카카오 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
+      // 회원가입 페이지에서는 계정 선택을 강제하기 위해 queryParams 추가
+      // 카카오톡의 경우 prompt 파라미터로 계정 선택 화면 표시
+      options.queryParams = {
+        prompt: 'select_account'
       }
       
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -605,18 +619,32 @@ const SignUp = () => {
     setAuthMethod('google')
 
     try {
+      // 회원가입 페이지에서는 기존 세션을 완전히 제거하여 새로운 계정으로 가입할 수 있도록 함
+      console.log('회원가입: 기존 세션 제거 중...')
+      await supabase.auth.signOut()
+      localStorage.removeItem('isLoggedIn')
+      localStorage.removeItem('userProfile')
+      
       const { Capacitor } = await import('@capacitor/core')
       const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
       
-      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
-      // 앱 환경에서만 redirectTo 사용
+      // 웹과 앱 모두 redirectTo를 명시적으로 설정
       const options: any = {}
-      if (!isWeb) {
+      if (isWeb) {
+        // 웹 환경: 현재 웹사이트의 /auth/callback으로 리다이렉트
+        options.redirectTo = `${window.location.origin}/auth/callback`
+        console.log('구글 로그인 시작 (웹), 리다이렉트 URL:', options.redirectTo)
+      } else {
+        // 앱 환경: 딥링크 사용
         const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
         options.redirectTo = getOAuthRedirectUrl()
         console.log('구글 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
-      } else {
-        console.log('구글 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
+      // 회원가입 페이지에서는 계정 선택을 강제하기 위해 queryParams 추가
+      // 구글의 경우 prompt=select_account로 계정 선택 화면 표시
+      options.queryParams = {
+        prompt: 'select_account'
       }
       
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -643,18 +671,32 @@ const SignUp = () => {
     setAuthMethod('apple')
 
     try {
+      // 회원가입 페이지에서는 기존 세션을 완전히 제거하여 새로운 계정으로 가입할 수 있도록 함
+      console.log('회원가입: 기존 세션 제거 중...')
+      await supabase.auth.signOut()
+      localStorage.removeItem('isLoggedIn')
+      localStorage.removeItem('userProfile')
+      
       const { Capacitor } = await import('@capacitor/core')
       const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
       
-      // 웹 환경에서는 redirectTo를 사용하지 않음 (Supabase 기본 동작 사용)
-      // 앱 환경에서만 redirectTo 사용
+      // 웹과 앱 모두 redirectTo를 명시적으로 설정
       const options: any = {}
-      if (!isWeb) {
+      if (isWeb) {
+        // 웹 환경: 현재 웹사이트의 /auth/callback으로 리다이렉트
+        options.redirectTo = `${window.location.origin}/auth/callback`
+        console.log('애플 로그인 시작 (웹), 리다이렉트 URL:', options.redirectTo)
+      } else {
+        // 앱 환경: 딥링크 사용
         const { getOAuthRedirectUrl } = await import('../utils/oauthRedirect')
         options.redirectTo = getOAuthRedirectUrl()
         console.log('애플 로그인 시작 (앱), 리다이렉트 URL:', options.redirectTo)
-      } else {
-        console.log('애플 로그인 시작 (웹), Supabase 기본 리다이렉트 사용')
+      }
+      
+      // 회원가입 페이지에서는 계정 선택을 강제하기 위해 queryParams 추가
+      // 애플의 경우 prompt 파라미터로 계정 선택 화면 표시
+      options.queryParams = {
+        prompt: 'select_account'
       }
       
       const { data, error } = await supabase.auth.signInWithOAuth({

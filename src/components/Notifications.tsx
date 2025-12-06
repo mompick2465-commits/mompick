@@ -27,6 +27,7 @@ interface Notification {
     message?: string
     title?: string
     content?: string
+    notice_id?: string // 공지사항 중복 제거용
   }
   created_at: string
   is_read: boolean
@@ -99,16 +100,26 @@ const Notifications = () => {
       console.log('=== 알림 조회 디버깅 ===')
       console.log('currentUser:', currentUser)
       console.log('사용할 userId:', userId)
+      console.log('activeTab:', activeTab)
       
-      // 알림 데이터 가져오기 (새로운 스키마)
-      const { data, error } = await supabase
+      // 공지사항 탭인 경우: 모든 공지사항 조회 (to_user_id 필터 없음)
+      // 받은 알림 탭인 경우: 해당 사용자에게 온 알림만 조회
+      let query = supabase
         .from('notifications')
         .select(`
           *,
           posts:post_id(content)
         `)
-        .eq('to_user_id', userId) // 새로운 스키마: to_user_id
-        .order('created_at', { ascending: false })
+      
+      if (activeTab === 'notice') {
+        // 공지사항 탭: type이 'notice'인 모든 공지사항 조회
+        query = query.eq('type', 'notice')
+      } else {
+        // 받은 알림 탭: 해당 사용자에게 온 알림만 조회
+        query = query.eq('to_user_id', userId)
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false })
 
       console.log('알림 조회 결과:', { data, error })
 
@@ -131,7 +142,8 @@ const Notifications = () => {
             payload: {
               title: notification.payload?.title || '공지사항',
               content: notification.payload?.content || notification.payload?.message || '',
-              message: notification.payload?.message || ''
+              message: notification.payload?.message || '',
+              notice_id: notification.payload?.notice_id // notice_id 유지 (중복 제거용)
             },
             created_at: notification.created_at,
             is_read: notification.is_read
@@ -433,12 +445,14 @@ const Notifications = () => {
     }
   })
 
-  // 공지사항 중복 제거 (notice_id로 그룹화)
+  // 공지사항 중복 제거 (notice_id로 그룹화, 없으면 title+content로 그룹화)
   const uniqueNotices = activeTab === 'notice' 
     ? Array.from(
         new Map(
           filteredNotifications.map(notice => {
-            const noticeId = (notice.payload as any)?.notice_id || notice.id
+            // notice_id가 있으면 사용, 없으면 title+content 조합으로 그룹화
+            const noticeId = (notice.payload as any)?.notice_id 
+              || `${notice.payload?.title || ''}_${notice.payload?.content || ''}`
             return [noticeId, notice]
           })
         ).values()
