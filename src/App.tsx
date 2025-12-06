@@ -643,12 +643,64 @@ function App() {
           return
         }
 
+        // 중복 실행 방지를 위한 전역 플래그 (모듈 스코프로 이동하여 유지)
+        if (!(window as any).__deepLinkState) {
+          (window as any).__deepLinkState = {
+            isProcessing: false,
+            processedUrls: new Set<string>(),
+            lastProcessedTime: 0
+          }
+        }
+        const deepLinkState = (window as any).__deepLinkState
+
         // 딥링크 이벤트 리스너 등록
         const handleAppUrl = async (event: any) => {
           console.log('🔗 딥링크 수신:', event.url)
           
           // mompick://auth-callback 딥링크 확인
           if (event.url && event.url.startsWith('mompick://auth-callback')) {
+            // 중복 실행 방지: 이미 처리 중이면 무시
+            if (deepLinkState.isProcessing) {
+              console.log('⚠️ 딥링크 처리 중, 중복 실행 방지')
+              return
+            }
+            
+            // 이미 처리된 URL인지 확인 (최근 10초 이내 처리된 URL은 무시)
+            const now = Date.now()
+            if (deepLinkState.processedUrls.has(event.url) && (now - deepLinkState.lastProcessedTime) < 10000) {
+              console.log('⚠️ 이미 처리된 딥링크 (최근 10초 이내), 중복 실행 방지')
+              return
+            }
+            
+            // 이미 /auth/callback 경로에 있고 세션이 있으면 무시
+            if (window.location.pathname === '/auth/callback') {
+              const { data: { session } } = await supabase.auth.getSession()
+              if (session) {
+                console.log('⚠️ 이미 /auth/callback 경로에 있고 세션 있음, 리다이렉트 생략')
+                // 처리된 URL로 기록하고 플래그 리셋
+                deepLinkState.processedUrls.add(event.url)
+                deepLinkState.lastProcessedTime = now
+                deepLinkState.isProcessing = false
+                return
+              }
+            }
+            
+            // 이미 메인 페이지에 있고 세션이 있으면 무시
+            if (window.location.pathname === '/main') {
+              const { data: { session } } = await supabase.auth.getSession()
+              if (session) {
+                console.log('⚠️ 이미 메인 페이지에 있고 세션 있음, 딥링크 처리 생략')
+                deepLinkState.processedUrls.add(event.url)
+                deepLinkState.lastProcessedTime = now
+                deepLinkState.isProcessing = false
+                return
+              }
+            }
+            
+            deepLinkState.isProcessing = true
+            deepLinkState.processedUrls.add(event.url)
+            deepLinkState.lastProcessedTime = now
+            
             console.log('✅ OAuth 콜백 딥링크 감지')
             
             try {
@@ -673,11 +725,23 @@ function App() {
                   
                   if (sessionError) {
                     console.error('세션 설정 오류:', sessionError)
+                    deepLinkState.isProcessing = false
                   } else if (sessionData.session) {
                     console.log('✅ 딥링크로 세션 설정 성공')
                     // /auth/callback으로 리다이렉트하여 AuthCallback 컴포넌트가 처리하도록
-                    window.location.href = '/auth/callback'
+                    // 이미 /auth/callback에 있지 않은 경우에만 리다이렉트
+                    if (window.location.pathname !== '/auth/callback') {
+                      // 리다이렉트 전에 플래그 리셋 (페이지 이동 후 새로운 핸들러가 설정됨)
+                      deepLinkState.isProcessing = false
+                      window.location.href = '/auth/callback'
+                    } else {
+                      deepLinkState.isProcessing = false
+                    }
+                  } else {
+                    deepLinkState.isProcessing = false
                   }
+                } else {
+                  deepLinkState.isProcessing = false
                 }
               } else {
                 // 해시가 없으면 세션 확인
@@ -685,46 +749,41 @@ function App() {
                 
                 if (error) {
                   console.error('세션 확인 오류:', error)
+                  deepLinkState.isProcessing = false
                 } else if (session) {
                   console.log('✅ OAuth 인증 성공, 세션 확인됨')
-                  window.location.href = '/auth/callback'
+                  // 이미 /auth/callback에 있지 않은 경우에만 리다이렉트
+                  if (window.location.pathname !== '/auth/callback') {
+                    // 리다이렉트 전에 플래그 리셋 (페이지 이동 후 새로운 핸들러가 설정됨)
+                    deepLinkState.isProcessing = false
+                    window.location.href = '/auth/callback'
+                  } else {
+                    deepLinkState.isProcessing = false
+                  }
+                } else {
+                  deepLinkState.isProcessing = false
                 }
               }
             } catch (urlError) {
               console.error('딥링크 처리 오류:', urlError)
+              deepLinkState.isProcessing = false
             }
           }
         }
 
         // 앱이 이미 열려있을 때 딥링크 처리
+        // appUrlOpen 이벤트만 사용 - getLaunchUrl()은 iOS에서 이미 처리된 딥링크를 계속 반환하는 문제가 있음
         App.addListener('appUrlOpen', handleAppUrl)
         
-        // 앱이 백그라운드에서 포그라운드로 올 때 딥링크 처리
-        App.addListener('appStateChange', async (state) => {
-          if (state.isActive) {
-            // 앱이 활성화될 때 딥링크 확인
-            try {
-              const launchUrl = await App.getLaunchUrl()
-              if (launchUrl?.url) {
-                handleAppUrl({ url: launchUrl.url })
-              }
-            } catch (error) {
-              // getLaunchUrl이 실패할 수 있음 (딥링크가 없는 경우)
-              console.log('딥링크 없음:', error)
-            }
-          }
-        })
+        // appStateChange 이벤트 리스너 제거
+        // iOS에서 getLaunchUrl()이 이미 처리된 딥링크를 계속 반환하여 중복 처리가 발생함
+        // 따라서 appUrlOpen 이벤트만 사용하여 실제 딥링크만 처리
 
-        // 앱 시작 시 딥링크 확인
-        try {
-          const launchUrl = await App.getLaunchUrl()
-          if (launchUrl?.url) {
-            handleAppUrl({ url: launchUrl.url })
-          }
-        } catch (error) {
-          // getLaunchUrl이 실패할 수 있음 (딥링크가 없는 경우)
-          console.log('앱 시작 시 딥링크 없음:', error)
-        }
+        // 앱 시작 시 딥링크 확인 제거
+        // iOS에서 getLaunchUrl()은 이미 처리된 딥링크를 계속 반환하는 문제가 있음
+        // 따라서 appUrlOpen 이벤트만 사용하여 실제 딥링크만 처리
+        // 앱 시작 시 getLaunchUrl() 호출 제거 - appUrlOpen 이벤트로만 처리
+        console.log('✅ 딥링크 핸들러 설정 완료 - appUrlOpen 이벤트만 사용')
 
         return () => {
           App.removeAllListeners()
@@ -748,14 +807,19 @@ function App() {
           return
         }
 
+        // 이미 /auth/callback 경로에 있으면 AuthCallback 컴포넌트가 처리하므로 무시
+        if (window.location.pathname === '/auth/callback') {
+          return
+        }
+
         // URL 해시에 토큰이 있는지 확인
         if (window.location.hash) {
           const hashParams = new URLSearchParams(window.location.hash.substring(1))
           const accessToken = hashParams.get('access_token')
           const refreshToken = hashParams.get('refresh_token')
           
-          // 해시에 토큰이 있고 현재 경로가 /auth/callback이 아니면 리다이렉트
-          if (accessToken && refreshToken && window.location.pathname !== '/auth/callback') {
+          // 해시에 토큰이 있으면 /auth/callback으로 리다이렉트
+          if (accessToken && refreshToken) {
             console.log('🔍 웹: URL 해시에서 OAuth 토큰 발견, /auth/callback으로 리다이렉트')
             window.location.replace(`/auth/callback${window.location.hash}`)
           }
@@ -765,16 +829,9 @@ function App() {
       }
     }
 
+    // 앱 시작 시에만 한 번 확인 (hashchange 이벤트 리스너 제거 - 무한 루프 방지)
+    // AuthCallback 컴포넌트에서 해시를 제거하면 hashchange 이벤트가 발생하여 무한 루프가 발생할 수 있음
     handleWebOAuthCallback()
-
-    // URL 변경 감지
-    window.addEventListener('hashchange', handleWebOAuthCallback)
-    window.addEventListener('popstate', handleWebOAuthCallback)
-
-    return () => {
-      window.removeEventListener('hashchange', handleWebOAuthCallback)
-      window.removeEventListener('popstate', handleWebOAuthCallback)
-    }
   }, [])
 
   return (

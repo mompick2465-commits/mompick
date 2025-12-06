@@ -5,25 +5,47 @@ import { motion } from 'framer-motion'
 import { CheckCircle, XCircle, Loader2, Heart } from 'lucide-react'
 import { Capacitor } from '@capacitor/core'
 
+// 전역 플래그로 중복 실행 방지 (컴포넌트 인스턴스 간 공유)
+let globalIsProcessing = false
+let globalProcessedUrl: string | null = null
+
 const AuthCallback = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('')
   
-  // 중복 실행 방지를 위한 ref
+  // 중복 실행 방지를 위한 ref (컴포넌트 인스턴스별)
   const isProcessing = useRef(false)
 
   useEffect(() => {
     let isMounted = true
+    let navigationTimeout: NodeJS.Timeout | null = null
 
     const handleAuthCallback = async () => {
-      // 중복 실행 방지
+      // 현재 URL을 고유 식별자로 사용
+      const currentUrl = window.location.href
+      
+      // 전역 플래그로 중복 실행 방지
+      if (globalIsProcessing) {
+        console.log('⚠️ OAuth 콜백 전역 처리 중, 중복 실행 방지')
+        return
+      }
+      
+      // 이미 처리된 URL이면 중복 실행 방지
+      if (globalProcessedUrl === currentUrl) {
+        console.log('⚠️ 이미 처리된 URL, 중복 실행 방지:', currentUrl)
+        return
+      }
+      
+      // 컴포넌트 인스턴스별 중복 실행 방지
       if (isProcessing.current) {
-        console.log('OAuth 콜백 처리 중, 중복 실행 방지')
+        console.log('⚠️ OAuth 콜백 처리 중 (인스턴스별), 중복 실행 방지')
         return
       }
 
+      globalIsProcessing = true
+      globalProcessedUrl = currentUrl
       isProcessing.current = true
 
       try {
@@ -34,6 +56,10 @@ const AuthCallback = () => {
         console.log('URL 파라미터:', Object.fromEntries(urlParams))
         
         // URL 해시 확인 (OAuth 응답이 해시에 있을 수 있음)
+        // 웹 환경에서 해시가 이미 제거되었는지 확인 (중복 처리 방지)
+        const { Capacitor } = await import('@capacitor/core')
+        const isWeb = Capacitor.getPlatform() === 'web' || !Capacitor.isNativePlatform()
+        
         if (window.location.hash) {
           console.log('URL 해시:', window.location.hash)
           
@@ -43,6 +69,21 @@ const AuthCallback = () => {
           const errorDescription = hashParams.get('error_description')
           const accessToken = hashParams.get('access_token')
           const refreshToken = hashParams.get('refresh_token')
+          
+          // 웹 환경에서 해시가 이미 처리되었는지 확인 (전역 플래그로 확인)
+          if (isWeb && accessToken && refreshToken) {
+            // 해시를 기반으로 한 고유 식별자 생성
+            const hashIdentifier = `${accessToken.substring(0, 20)}...${refreshToken.substring(0, 10)}`
+            if ((window as any).__processedOAuthHash === hashIdentifier) {
+              console.log('⚠️ 이미 처리된 OAuth 해시, 중복 실행 방지')
+              globalIsProcessing = false
+              globalProcessedUrl = null
+              isProcessing.current = false
+              return
+            }
+            // 처리된 해시로 기록
+            ;(window as any).__processedOAuthHash = hashIdentifier
+          }
           
           // 해시에 토큰이 있는 경우 (Supabase가 Site URL로 리다이렉트한 경우)
           if (accessToken && refreshToken) {
@@ -62,6 +103,16 @@ const AuthCallback = () => {
               
               if (sessionData.session) {
                 console.log('✅ 해시에서 토큰으로 세션 설정 성공')
+                
+                // 웹 환경에서 해시 제거 (중복 처리 방지)
+                // hashchange 이벤트가 발생하지 않도록 history.replaceState 사용
+                if (isWeb && window.location.hash) {
+                  // 해시를 제거하되 hashchange 이벤트를 발생시키지 않도록 history.replaceState 사용
+                  const urlWithoutHash = window.location.pathname + window.location.search
+                  window.history.replaceState(null, '', urlWithoutHash)
+                  console.log('✅ 웹: 해시 제거 완료 (중복 처리 방지)')
+                }
+                
                 // 세션 확인으로 넘어감 (아래 코드 계속 실행)
               }
             } catch (tokenError) {
@@ -101,20 +152,29 @@ const AuthCallback = () => {
             }
             
             // 토큰이 없고 에러가 있는 경우에만 에러 처리
-            if (error && !accessToken && isMounted) {
+            if (error && !accessToken) {
+              console.log('⚠️ OAuth 에러 발생 - 로그인 페이지로 리다이렉트')
+              
+              // 플래그 먼저 리셋
+              globalIsProcessing = false
+              globalProcessedUrl = null
+              isProcessing.current = false
+              
               setStatus('error')
               setMessage(errorMessage)
               
+              // 짧은 딜레이 후 네비게이션 (에러 메시지를 보여주기 위해)
               setTimeout(() => {
+                console.log('✅ 로그인 페이지로 네비게이션 시작')
                 navigate(`/signup?step=auth-method&error=${errorCode}`)
-              }, 4000)
+              }, 2000)
+              
+              return
             }
             
             // 토큰이 있으면 에러를 무시하고 계속 진행
             if (accessToken) {
               console.log('💡 해시에 토큰이 있어 에러를 무시하고 계속 진행')
-            } else if (error) {
-              return
             }
           }
         }
@@ -146,9 +206,33 @@ const AuthCallback = () => {
           let hasProfile = false
           if (profileError) {
             console.error('프로필 조회 오류:', profileError)
+            // 네트워크 오류인 경우 재시도하지 않고 에러로 처리
+            if (profileError.message?.includes('Load failed') || profileError.message?.includes('TypeError')) {
+              console.log('⚠️ 네트워크 오류로 프로필 조회 실패, 잠시 후 재시도')
+              // 네트워크 오류는 잠시 후 재시도
+              setTimeout(() => {
+                if (isMounted && !globalIsProcessing) {
+                  globalIsProcessing = false
+                  globalProcessedUrl = null
+                  isProcessing.current = false
+                  handleAuthCallback()
+                }
+              }, 2000)
+              return
+            }
             // 에러가 발생해도 프로필이 없는 것으로 간주
           } else {
             hasProfile = profileData && profileData.auth_user_id ? true : false
+            console.log('프로필 존재 여부:', hasProfile, {
+              profileData,
+              hasAuthUserId: profileData?.auth_user_id,
+              userId: user.id
+            })
+          }
+          
+          // 프로필이 없어도 세션이 있으면 계속 진행 (신규 사용자 처리)
+          if (!hasProfile) {
+            console.log('⚠️ 프로필이 없음 - 신규 사용자로 처리')
           }
           
           // OAuth 제공자 정보 확인 (여러 방법으로 시도)
@@ -172,39 +256,76 @@ const AuthCallback = () => {
             provider: provider
           })
           
+          console.log('프로필 존재 여부 확인:', {
+            hasProfile,
+            profileData,
+            userId: user.id
+          })
+          
           if (hasProfile) {
+            console.log('✅ 프로필이 존재함 - 메인 페이지로 이동')
             // 프로필이 이미 완성된 경우 FCM 초기화 후 메인 페이지로
-            if (isMounted) {
-              setStatus('success')
-              setMessage('로그인되었습니다!')
-              
-              // FCM 초기화
-              const { initializeFCM } = await import('../utils/fcm')
-              await initializeFCM()
-              
-              setTimeout(() => {
-                if (isMounted) {
-                  navigate('/main')
-                }
-              }, 2500)
+            
+            // 이미 메인 페이지에 있으면 바로 리턴
+            if (window.location.pathname === '/main') {
+              console.log('⚠️ 이미 메인 페이지에 있음, 리다이렉트 생략')
+              globalIsProcessing = false
+              globalProcessedUrl = null
+              isProcessing.current = false
+              return
             }
+            
+            console.log('✅ 상태를 success로 변경하고 메인 페이지로 이동')
+            
+            // 플래그 먼저 리셋 (네비게이션 전에 리셋하여 다음 처리 가능하도록)
+            globalIsProcessing = false
+            globalProcessedUrl = null
+            isProcessing.current = false
+            
+            // FCM 초기화 (비동기이지만 await하지 않고 바로 진행)
+            const fcmInitPromise = (async () => {
+              try {
+                const { initializeFCM } = await import('../utils/fcm')
+                await initializeFCM()
+              } catch (fcmError) {
+                console.error('FCM 초기화 오류:', fcmError)
+                // FCM 초기화 실패해도 계속 진행
+              }
+            })()
+            
+            // 상태 변경과 네비게이션을 즉시 실행
+            setStatus('success')
+            setMessage('로그인되었습니다!')
+            
+            // 짧은 딜레이 후 네비게이션 (UI 업데이트를 위해)
+            // isMounted 체크 제거 - 컴포넌트가 언마운트되어도 네비게이션은 실행되어야 함
+            navigationTimeout = setTimeout(() => {
+              console.log('✅ 메인 페이지로 네비게이션 시작')
+              navigate('/main')
+              // FCM 초기화 완료 대기 (선택적)
+              fcmInitPromise.catch(() => {})
+            }, 1500)
           } else {
             // 프로필이 완성되지 않은 경우 약관 동의 단계로 (신규 사용자)
+            console.log('⚠️ 프로필이 없음 - 약관 동의 페이지로 이동')
             let providerName = '소셜'
             if (provider === 'kakao') providerName = '카카오톡'
             else if (provider === 'google') providerName = '구글'
             else if (provider === 'apple') providerName = '애플'
             
-            if (isMounted) {
-              setStatus('success')
-              setMessage(`${providerName} 계정 연동되었습니다! 약관에 동의해주세요.`)
-              
-              setTimeout(() => {
-                if (isMounted) {
-                  navigate('/signup?step=terms&oauth=success')
-                }
-              }, 2500)
-            }
+            // 플래그 먼저 리셋
+            globalIsProcessing = false
+            globalProcessedUrl = null
+            isProcessing.current = false
+            
+            setStatus('success')
+            setMessage(`${providerName} 계정 연동되었습니다! 약관에 동의해주세요.`)
+            
+            navigationTimeout = setTimeout(() => {
+              // isMounted 체크 제거 - 컴포넌트가 언마운트되어도 네비게이션은 실행되어야 함
+              console.log('✅ 약관 동의 페이지로 네비게이션 시작')
+              navigate('/signup?step=terms&oauth=success')
+            }, 1500)
           }
         } else {
           // 세션이 없음 - 인증 실패
@@ -215,9 +336,16 @@ const AuthCallback = () => {
             
             setTimeout(() => {
               if (isMounted) {
+                globalIsProcessing = false
+                globalProcessedUrl = null
+                isProcessing.current = false
                 navigate('/signup?step=auth-method&error=auth_failed')
               }
             }, 2000)
+          } else {
+            globalIsProcessing = false
+            globalProcessedUrl = null
+            isProcessing.current = false
           }
         }
       } catch (error: any) {
@@ -228,12 +356,20 @@ const AuthCallback = () => {
           
           setTimeout(() => {
             if (isMounted) {
+              globalIsProcessing = false
+              globalProcessedUrl = null
+              isProcessing.current = false
               navigate('/signup?step=auth-method&error=callback_error')
             }
           }, 2000)
+        } else {
+          globalIsProcessing = false
+          globalProcessedUrl = null
+          isProcessing.current = false
         }
       } finally {
-        isProcessing.current = false
+        // 처리 완료 후 플래그는 각 분기에서 리셋하므로 여기서는 리셋하지 않음
+        // 네비게이션이 완료된 후에만 리셋하도록 변경
       }
     }
 
@@ -242,9 +378,16 @@ const AuthCallback = () => {
     // Cleanup function
     return () => {
       isMounted = false
-      isProcessing.current = false
+      // 네비게이션 타임아웃이 있으면 정리하지 않음 (네비게이션이 실행되어야 함)
+      // 컴포넌트 언마운트 시에도 전역 플래그는 유지 (다른 인스턴스가 처리 중일 수 있음)
+      // 대신 짧은 시간 후 리셋
+      if (!navigationTimeout) {
+        setTimeout(() => {
+          isProcessing.current = false
+        }, 2000)
+      }
     }
-  }, [navigate])
+  }, [navigate, searchParams])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-white via-orange-50/30 to-pink-50/30 flex items-center justify-center p-4">
@@ -372,14 +515,14 @@ const AuthCallback = () => {
                   </motion.div>
                 </div>
                 
-                {/* 실패 바 (하트 아래) */}
+                {/* 실패 바 (하트 아래) - 풀로 차있다가 빠지는 애니메이션 */}
                 <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 w-40 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                   <motion.div
                     className="h-full bg-gradient-to-r from-red-500 to-red-600 rounded-full"
-                    initial={{ width: 0 }}
-                    animate={{ width: '100%' }}
+                    initial={{ width: '100%' }}
+                    animate={{ width: '0%' }}
                     transition={{ 
-                      duration: 0.6,
+                      duration: 1.2,
                       ease: [0.4, 0, 0.2, 1],
                       delay: 0.2
                     }}
