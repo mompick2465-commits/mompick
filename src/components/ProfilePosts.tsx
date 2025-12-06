@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Heart, MessageCircle, BookOpen } from 'lucide-react'
+import { ChevronLeft, Heart, MessageCircle, BookOpen } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 interface UserPost {
@@ -101,16 +101,16 @@ const ProfilePosts = () => {
   return (
     <div className="min-h-screen bg-white">
       {/* 헤더 */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 shadow-lg sticky top-0 z-10">
         <div className="px-4 py-4">
           <div className="flex items-center justify-between">
             <button
               onClick={() => navigate('/profile')}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ChevronLeft className="w-4 h-4 text-gray-700" />
             </button>
-            <h1 className="text-xl font-semibold text-gray-900">내가 작성한 글</h1>
+            <h1 className="text-lg font-bold text-gray-900">내가 작성한 글</h1>
             <div className="w-10"></div>
           </div>
         </div>

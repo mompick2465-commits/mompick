@@ -431,6 +431,28 @@ const Community = () => {
     try {
       const categoryTitle = popularTopics.find(t => t.id === selectedCategory)?.title || '어린이집,유치원'
       
+      // 현재 사용자의 차단 목록 가져오기
+      let blockedUserIds: string[] = []
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const isLoggedIn = localStorage.getItem('isLoggedIn')
+          if (isLoggedIn !== 'true') {
+            // OAuth 사용자인 경우 차단 목록 조회
+            const { data: blockedData } = await supabase
+              .from('blocked_users')
+              .select('blocked_user_id')
+              .eq('blocker_id', user.id)
+            
+            if (blockedData) {
+              blockedUserIds = blockedData.map(item => item.blocked_user_id)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('차단 목록 조회 오류:', error)
+      }
+      
       // 페이지네이션 적용
       const from = (page - 1) * postsPerPage
       const to = from + postsPerPage - 1
@@ -459,7 +481,13 @@ const Community = () => {
         return
       }
 
-      // 전체 게시글 수 확인 (hasMore 판단용)
+      // 차단된 사용자의 게시글 필터링
+      const filteredPosts = (postsData || []).filter(post => {
+        const authorId = post.profiles?.auth_user_id || post.author_id
+        return !blockedUserIds.includes(authorId)
+      })
+
+      // 전체 게시글 수 확인 (hasMore 판단용) - 차단된 사용자 제외
       const { count: totalCount } = await supabase
         .from('community_posts')
         .select('*', { count: 'exact', head: true })
@@ -467,7 +495,7 @@ const Community = () => {
 
       // 각 게시글의 실제 댓글 수와 좋아요 수 가져오기
       const postsWithActualCounts = await Promise.all(
-        (postsData || []).map(async (post) => {
+        filteredPosts.map(async (post) => {
           // 댓글 수
           const { count: commentCount } = await supabase
             .from('comments')
@@ -1605,7 +1633,16 @@ const Community = () => {
                   </div>
                   <div className={`text-[11px] font-semibold mb-1 ${
                     selectedCategory === topic.id ? 'text-[#fb8678]' : 'text-gray-700'
-                  }`}>{topic.title}</div>
+                  }`}>
+                    {topic.title === '어린이집,유치원' ? (
+                      <div className="flex flex-col leading-tight">
+                        <span>어린이집</span>
+                        <span>유치원</span>
+                      </div>
+                    ) : (
+                      topic.title
+                    )}
+                  </div>
                 </div>
               </button>
             ))}
@@ -1658,7 +1695,7 @@ const Community = () => {
                         <img
                           src={post.author_profile_image}
                           alt={`${post.author_name}의 프로필`}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover rounded-2xl"
                           onError={(e) => {
                             // 프로필 이미지 로드 실패 시 이니셜 표시
                             const target = e.target as HTMLImageElement
@@ -1666,16 +1703,18 @@ const Community = () => {
                             const parent = target.parentElement
                             if (parent) {
                               parent.innerHTML = `
-                                <div class="w-full h-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-2xl text-white">
-                                  ${post.author_name.charAt(0)}
+                                <div class="w-full h-full bg-gray-100 rounded-2xl flex items-center justify-center">
+                                  <span class="text-sm font-medium text-gray-600">${post.author_name.charAt(0)}</span>
                                 </div>
                               `
                             }
                           }}
                         />
                       ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-2xl text-white">
-                          {post.author_name.charAt(0)}
+                        <div className="w-full h-full bg-gray-100 rounded-2xl flex items-center justify-center">
+                          <span className="text-sm font-medium text-gray-600">
+                            {post.author_name.charAt(0)}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -2041,7 +2080,7 @@ const Community = () => {
                       <div className="flex space-x-3">
                         <div className="relative w-8 h-8">
                           <div 
-                            className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer"
+                            className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer shadow-lg"
                             style={{ borderRadius: '12px' }}
                             onClick={(e) => {
                               e.stopPropagation() // 댓글 클릭 이벤트 전파 방지
@@ -2065,9 +2104,12 @@ const Community = () => {
                                 src={comment.user_profile_image}
                                 alt={`${comment.user_name}의 프로필`}
                                 className="w-full h-full object-cover"
+                                style={{ borderRadius: '12px' }}
                               />
                             ) : (
-                              comment.user_name.charAt(0)
+                              <span className="text-sm font-medium text-gray-600">
+                                {comment.user_name.charAt(0)}
+                              </span>
                             )}
                           </div>
                           
@@ -2300,7 +2342,7 @@ const Community = () => {
                                 <div key={reply.id} className="flex space-x-3">
                                   <div className="relative w-6 h-6">
                                     <div 
-                                      className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
+                                      className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer shadow-lg"
                                       style={{ borderRadius: '8px' }}
                                       onClick={(e) => {
                                         e.stopPropagation() // 답글 클릭 이벤트 전파 방지
@@ -2324,9 +2366,12 @@ const Community = () => {
                                           src={reply.user_profile_image}
                                           alt={`${reply.user_name}의 프로필`}
                                           className="w-full h-full object-cover"
+                                          style={{ borderRadius: '8px' }}
                                         />
                                       ) : (
-                                        reply.user_name.charAt(0)
+                                        <span className="text-xs font-medium text-gray-600">
+                                          {reply.user_name.charAt(0)}
+                                        </span>
                                       )}
                                     </div>
                                     
@@ -2541,7 +2586,7 @@ const Community = () => {
                                         <div key={nestedReply.id} className="flex space-x-3">
                                           <div className="relative w-6 h-6">
                                             <div 
-                                              className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium"
+                                              className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center shadow-lg"
                                               style={{ borderRadius: '8px' }}
                                             >
                                               {nestedReply.user_profile_image ? (
@@ -2549,9 +2594,12 @@ const Community = () => {
                                                   src={nestedReply.user_profile_image}
                                                   alt={`${nestedReply.user_name}의 프로필`}
                                                   className="w-full h-full object-cover"
+                                                  style={{ borderRadius: '8px' }}
                                                 />
                                               ) : (
-                                                nestedReply.user_name.charAt(0)
+                                                <span className="text-xs font-medium text-gray-600">
+                                                  {nestedReply.user_name.charAt(0)}
+                                                </span>
                                               )}
                                             </div>
                                             

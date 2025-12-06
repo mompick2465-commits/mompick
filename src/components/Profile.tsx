@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronLeft, Edit, Camera, Save, X, Trash2, Grid, BookOpen, User, Heart, MessageCircle, MapPin, Star } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Edit, Camera, Save, X, Trash2, Grid, BookOpen, User, Heart, MessageCircle, MapPin, Star } from 'lucide-react'
 import { supabase, uploadProfileImage, deleteProfileImage } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { listFavorites, removeFavorite, FavoriteTargetType } from '../utils/favorites'
@@ -112,7 +112,22 @@ const Profile = () => {
   const [marketingAgreed, setMarketingAgreed] = useState(false)
   const [loadingTerms, setLoadingTerms] = useState(false)
 
-
+  // 차단 목록 관련 상태
+  const [blockedUsers, setBlockedUsers] = useState<Array<{
+    id: string
+    blocked_user_id: string
+    created_at: string
+    profiles: {
+      full_name: string
+      nickname?: string
+      profile_image_url?: string
+    }
+  }>>([])
+  const [loadingBlockedUsers, setLoadingBlockedUsers] = useState(false)
+  const [showUnblockConfirm, setShowUnblockConfirm] = useState(false)
+  const [pendingUnblockUserId, setPendingUnblockUserId] = useState<string | null>(null)
+  const [showAllBlockedUsers, setShowAllBlockedUsers] = useState(false)
+  const [wasAllBlockedUsersOpen, setWasAllBlockedUsersOpen] = useState(false)
 
   useEffect(() => {
     fetchProfile()
@@ -120,7 +135,7 @@ const Profile = () => {
 
   // 성공 팝업과 확인 팝업이 열릴 때 배경 스크롤 비활성화
   useEffect(() => {
-    if (successMessage || showSaveConfirm || showProfileSaveConfirm || showTermsWithdrawal || showMarketingWithdrawal) {
+    if (successMessage || showSaveConfirm || showProfileSaveConfirm || showTermsWithdrawal || showMarketingWithdrawal || showUnblockConfirm || showAllBlockedUsers) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = 'unset'
@@ -130,13 +145,142 @@ const Profile = () => {
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [successMessage, showSaveConfirm, showProfileSaveConfirm, showTermsWithdrawal, showMarketingWithdrawal])
+  }, [successMessage, showSaveConfirm, showProfileSaveConfirm, showTermsWithdrawal, showMarketingWithdrawal, showUnblockConfirm, showAllBlockedUsers])
 
   useEffect(() => {
     if (profile) {
       fetchUserContent()
+      fetchBlockedUsers()
     }
   }, [profile])
+
+  // 차단 목록 가져오기
+  const fetchBlockedUsers = async () => {
+    try {
+      setLoadingBlockedUsers(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // 로컬 스토리지에서 전화번호 가입 사용자 확인
+      const isLoggedIn = localStorage.getItem('isLoggedIn')
+      if (isLoggedIn === 'true') {
+        // 전화번호 가입 사용자는 차단 기능을 사용하지 않음
+        setBlockedUsers([])
+        setLoadingBlockedUsers(false)
+        return
+      }
+
+      const userIdToUse = user.id
+
+      // 차단 목록 가져오기 (blocked_users 테이블에서 blocker_id로 조회)
+      const { data: blockedData, error } = await supabase
+        .from('blocked_users')
+        .select('id, blocked_user_id, created_at')
+        .eq('blocker_id', userIdToUse)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('차단 목록 조회 오류:', error)
+        setBlockedUsers([])
+        return
+      }
+
+      if (!blockedData || blockedData.length === 0) {
+        setBlockedUsers([])
+        return
+      }
+
+      // 각 차단된 사용자의 프로필 정보 가져오기
+      const blockedUserIds = blockedData.map(item => item.blocked_user_id)
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select('auth_user_id, full_name, nickname, profile_image_url')
+        .in('auth_user_id', blockedUserIds)
+
+      if (profilesError) {
+        console.error('프로필 정보 조회 오류:', profilesError)
+        // 프로필 정보가 없어도 차단 목록은 표시
+        setBlockedUsers(blockedData.map(item => ({
+          ...item,
+          profiles: {
+            full_name: '알 수 없음',
+            nickname: undefined,
+            profile_image_url: undefined
+          }
+        })))
+        return
+      }
+
+      // 차단 목록과 프로필 정보 매칭
+      const profilesMap = new Map(
+        (profilesData || []).map(profile => [profile.auth_user_id, profile])
+      )
+
+      const blockedUsersWithProfiles = blockedData.map(item => {
+        const profile = profilesMap.get(item.blocked_user_id)
+        return {
+          ...item,
+          profiles: profile ? {
+            full_name: profile.full_name || '알 수 없음',
+            nickname: profile.nickname,
+            profile_image_url: profile.profile_image_url
+          } : {
+            full_name: '알 수 없음',
+            nickname: undefined,
+            profile_image_url: undefined
+          }
+        }
+      })
+
+      setBlockedUsers(blockedUsersWithProfiles)
+    } catch (error) {
+      console.error('차단 목록 조회 오류:', error)
+      setBlockedUsers([])
+    } finally {
+      setLoadingBlockedUsers(false)
+    }
+  }
+
+  // 차단 해제 처리
+  const handleUnblockUser = async (blockedUserId: string) => {
+    if (!blockedUserId) return
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('로그인이 필요합니다.')
+        return
+      }
+
+      const userIdToUse = user.id
+
+      const { error } = await supabase
+        .from('blocked_users')
+        .delete()
+        .eq('blocker_id', userIdToUse)
+        .eq('blocked_user_id', blockedUserId)
+
+      if (error) {
+        console.error('차단 해제 오류:', error)
+        alert('차단 해제 중 오류가 발생했습니다.')
+        return
+      }
+
+      alert('차단이 해제되었습니다.')
+      // 차단 목록 새로고침
+      await fetchBlockedUsers()
+      setShowUnblockConfirm(false)
+      setPendingUnblockUserId(null)
+      // 전체 목록 모달이 열려있었다면 다시 열기
+      if (wasAllBlockedUsersOpen) {
+        setShowAllBlockedUsers(true)
+        setWasAllBlockedUsersOpen(false)
+      }
+    } catch (error) {
+      console.error('차단 해제 오류:', error)
+      alert('차단 해제 중 오류가 발생했습니다.')
+    }
+  }
 
   useEffect(() => {
     const loadFavorites = async () => {
@@ -1153,21 +1297,29 @@ const Profile = () => {
            >
                <div className="flex items-start space-x-6">
                <div className="relative flex-shrink-0">
-                 <div className="w-24 h-24 rounded-3xl overflow-hidden bg-gradient-to-br from-orange-400 to-pink-500 shadow-lg">
-                   {profile.profile_image_url && !isProfileImageDeleted ? (
+                 <div className="w-24 h-24 rounded-3xl overflow-hidden shadow-lg">
+                   {(newProfileImagePreview || (profile.profile_image_url && !isProfileImageDeleted)) ? (
                      <img
-                       src={profile.profile_image_url}
+                       src={newProfileImagePreview || profile.profile_image_url}
                        alt="프로필 사진"
                        className="w-full h-full object-cover"
                        onError={(e) => {
-                         console.error('프로필 이미지 로딩 실패:', profile.profile_image_url)
+                         console.error('프로필 이미지 로딩 실패:', newProfileImagePreview || profile.profile_image_url)
                          e.currentTarget.style.display = 'none'
-                         e.currentTarget.nextElementSibling?.classList.remove('hidden')
+                         const parent = e.currentTarget.parentElement
+                         if (parent) {
+                           const fallback = parent.querySelector('.profile-fallback')
+                           if (fallback) {
+                             fallback.classList.remove('hidden')
+                           }
+                         }
                        }}
                      />
                    ) : null}
-                   <div className={`w-full h-full flex items-center justify-center ${profile.profile_image_url && !isProfileImageDeleted ? 'hidden' : ''}`}>
-                     <span className="text-white text-3xl">👤</span>
+                   <div className={`w-full h-full bg-gray-100 flex items-center justify-center ${(newProfileImagePreview || (profile.profile_image_url && !isProfileImageDeleted)) ? 'hidden profile-fallback' : 'profile-fallback'}`}>
+                     <span className="text-gray-600 text-3xl font-medium">
+                       {(profile.nickname || profile.full_name).charAt(0)}
+                     </span>
                    </div>
                  </div>
                  
@@ -1313,8 +1465,8 @@ const Profile = () => {
               <div className="bg-white rounded-lg">
                 {favorites.length === 0 ? (
                   <div className="text-center py-6">
-                    <p className="text-gray-600 text-sm">아직 찜한 시설이 없습니다.</p>
-                    <p className="text-gray-500 text-xs mt-1">관심있는 유치원/어린이집을 찜해 보세요.</p>
+                    <p className="text-xs font-medium text-gray-900">아직 찜한 시설이 없습니다.</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">관심있는 유치원/어린이집을 찜해 보세요.</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1510,8 +1662,8 @@ const Profile = () => {
               </div>
             ) : userPosts.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-gray-600 text-sm">아직 작성한 글이 없습니다.</p>
-                <p className="text-gray-500 text-xs mt-1">커뮤니티에 글을 작성해보세요!</p>
+                <p className="text-xs font-medium text-gray-900">아직 작성한 글이 없습니다.</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">커뮤니티에 글을 작성해보세요!</p>
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
@@ -2097,6 +2249,97 @@ const Profile = () => {
            </motion.div>
          )}
 
+         {/* 차단 목록 섹션 */}
+         {!isEditing && !isEditingChildren && activeTab === 'info' && (
+           <motion.div
+             initial={{ opacity: 0, y: 20 }}
+             animate={{ opacity: 1, y: 0 }}
+             transition={{ delay: 0.3 }}
+             className="bg-white rounded-2xl mb-3 shadow-sm border border-gray-100 overflow-hidden"
+           >
+             {/* 작은 헤더 */}
+             <div className="bg-gray-50 px-2 py-1 text-center">
+               <div className="text-xs text-gray-500 font-semibold">차단 목록</div>
+             </div>
+             
+             <div className="p-3">
+               {loadingBlockedUsers ? (
+                 <div className="text-center py-4">
+                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#fb8678] mx-auto mb-2"></div>
+                   <p className="text-xs text-gray-500">로딩 중...</p>
+                 </div>
+               ) : blockedUsers.length === 0 ? (
+                 <div className="text-center py-4">
+                   <p className="text-xs text-gray-500">차단한 사용자가 없습니다.</p>
+                 </div>
+               ) : (
+                 <>
+                   <div className="space-y-2">
+                     {blockedUsers.slice(0, 3).map((blockedUser) => {
+                       const userProfile = blockedUser.profiles as any
+                       const displayName = userProfile?.nickname || userProfile?.full_name || '알 수 없음'
+                       const profileImage = userProfile?.profile_image_url
+                       
+                       return (
+                         <div
+                           key={blockedUser.id}
+                           className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                         >
+                           <div className="flex items-center gap-2 flex-1 min-w-0">
+                             {profileImage ? (
+                               <img
+                                 src={profileImage}
+                                 alt={displayName}
+                                 className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                               />
+                             ) : (
+                               <div className="w-8 h-8 rounded-lg bg-gray-300 flex items-center justify-center flex-shrink-0">
+                                 <User className="w-4 h-4 text-gray-500" />
+                               </div>
+                             )}
+                             <div className="flex-1 min-w-0">
+                               <p className="text-xs font-medium text-gray-900 truncate">{displayName}</p>
+                               <p className="text-[10px] text-gray-500">
+                                 {new Date(blockedUser.created_at).toLocaleDateString('ko-KR')}
+                               </p>
+                             </div>
+                           </div>
+                           <button
+                             onClick={() => {
+                               setPendingUnblockUserId(blockedUser.blocked_user_id)
+                               setWasAllBlockedUsersOpen(false)
+                               setShowUnblockConfirm(true)
+                             }}
+                             className="px-3 py-1.5 text-xs text-[#fb8678] hover:bg-[#fb8678] hover:text-white rounded-lg transition-colors flex-shrink-0 ml-2"
+                           >
+                             해제
+                           </button>
+                         </div>
+                       )
+                     })}
+                   </div>
+                   {blockedUsers.length > 3 && (
+                     <div
+                       onClick={() => setShowAllBlockedUsers(true)}
+                       className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer mt-2"
+                     >
+                       <div className="flex items-center gap-2 flex-1 min-w-0">
+                         <div className="w-8 h-8 rounded-lg bg-gray-300 flex items-center justify-center flex-shrink-0">
+                           <ChevronRight className="w-4 h-4 text-gray-500" />
+                         </div>
+                         <div className="flex-1 min-w-0">
+                           <p className="text-xs font-medium text-gray-900 truncate">더 보기</p>
+                           <p className="text-[10px] text-gray-500">총 {blockedUsers.length}명의 차단된 사용자</p>
+                         </div>
+                       </div>
+                     </div>
+                   )}
+                 </>
+               )}
+             </div>
+           </motion.div>
+         )}
+
          {/* 법률 및 약관 섹션 */}
          {!isEditing && !isEditingChildren && activeTab === 'info' && (
            <motion.div
@@ -2592,6 +2835,131 @@ const Profile = () => {
                       </button>
                     </div>
                   </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 차단 해제 확인 모달 */}
+        {showUnblockConfirm && pendingUnblockUserId && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full mx-4 animate-[modalSlideUp_0.3s_cubic-bezier(0.22,0.61,0.36,1)]">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">차단 해제</h3>
+                  <button
+                    onClick={() => {
+                      setShowUnblockConfirm(false)
+                      setPendingUnblockUserId(null)
+                    }}
+                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+
+                <div className="mb-6">
+                  <p className="text-xs text-gray-500">
+                    • 차단 해제 후 해당 사용자의 글과 댓글이 다시 보이게 됩니다.
+                  </p>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowUnblockConfirm(false)
+                      setPendingUnblockUserId(null)
+                    }}
+                    className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={() => handleUnblockUser(pendingUnblockUserId)}
+                    className="flex-1 px-4 py-3 bg-[#fb8678] text-white rounded-xl font-medium hover:bg-[#e67567] transition-colors"
+                  >
+                    해제하기
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 전체 차단 목록 모달 */}
+        {showAllBlockedUsers && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full mx-4 max-h-[80vh] flex flex-col animate-[modalSlideUp_0.3s_cubic-bezier(0.22,0.61,0.36,1)]">
+              <div className="p-4 border-b border-gray-200 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900">차단 목록</h3>
+                  <button
+                    onClick={() => setShowAllBlockedUsers(false)}
+                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">총 {blockedUsers.length}명</p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4">
+                {loadingBlockedUsers ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#fb8678] mx-auto mb-2"></div>
+                    <p className="text-xs text-gray-500">로딩 중...</p>
+                  </div>
+                ) : blockedUsers.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-xs text-gray-500">차단한 사용자가 없습니다.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {blockedUsers.map((blockedUser) => {
+                      const userProfile = blockedUser.profiles as any
+                      const displayName = userProfile?.nickname || userProfile?.full_name || '알 수 없음'
+                      const profileImage = userProfile?.profile_image_url
+                      
+                      return (
+                        <div
+                          key={blockedUser.id}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {profileImage ? (
+                              <img
+                                src={profileImage}
+                                alt={displayName}
+                                className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                              />
+                            ) : (
+                              <div className="w-8 h-8 rounded-lg bg-gray-300 flex items-center justify-center flex-shrink-0">
+                                <User className="w-4 h-4 text-gray-500" />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-gray-900 truncate">{displayName}</p>
+                              <p className="text-[10px] text-gray-500">
+                                {new Date(blockedUser.created_at).toLocaleDateString('ko-KR')}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setPendingUnblockUserId(blockedUser.blocked_user_id)
+                              setWasAllBlockedUsersOpen(true)
+                              setShowUnblockConfirm(true)
+                              setShowAllBlockedUsers(false)
+                            }}
+                            className="px-3 py-1.5 text-xs text-[#fb8678] hover:bg-[#fb8678] hover:text-white rounded-lg transition-colors flex-shrink-0 ml-2"
+                          >
+                            해제
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
             </div>

@@ -112,9 +112,36 @@ export async function getKindergartenReviews(
 
     const hasMore = count ? (page * limit) < count : false
 
+    // 현재 사용자의 차단 목록 가져오기
+    let blockedUserIds: string[] = []
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const isLoggedIn = localStorage.getItem('isLoggedIn')
+        if (isLoggedIn !== 'true') {
+          // OAuth 사용자인 경우 차단 목록 조회
+          const { data: blockedData } = await supabase
+            .from('blocked_users')
+            .select('blocked_user_id')
+            .eq('blocker_id', user.id)
+          
+          if (blockedData) {
+            blockedUserIds = blockedData.map(item => item.blocked_user_id)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('차단 목록 조회 오류:', error)
+    }
+
+    // 차단된 사용자의 리뷰 필터링 (목록에서만 제외, 통계는 유지)
+    const filteredReviews = (data || []).filter(review => {
+      return !blockedUserIds.includes(review.user_id)
+    })
+
     // 사용자 프로필 정보와 도움됨 카운트를 별도로 가져오기
     const reviewsWithProfiles = await Promise.all(
-      (data || []).map(async (review) => {
+      filteredReviews.map(async (review) => {
         try {
           // profiles 테이블에서 auth_user_id로 조회
           const { data: profile, error: profileError } = await supabase

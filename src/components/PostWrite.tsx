@@ -46,6 +46,7 @@ const PostWrite = () => {
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<'original' | '16:9' | '4:3' | '9:16' | null>(null)
   const [previewCanvas, setPreviewCanvas] = useState<HTMLCanvasElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // URL에서 카테고리 정보를 가져오기
   const category = searchParams.get('category') || '어린이집,유치원'
@@ -402,10 +403,28 @@ const PostWrite = () => {
   }
 
   const handleEmojiSelect = (emoji: string) => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const text = postData.content
+    const newText = text.substring(0, start) + emoji + text.substring(end)
+    
     setPostData(prev => ({
       ...prev,
-      emojis: [...prev.emojis, emoji]
+      content: newText
     }))
+
+    // 커서 위치를 이모지 뒤로 이동
+    setTimeout(() => {
+      textarea.focus()
+      const newCursorPos = start + emoji.length
+      textarea.setSelectionRange(newCursorPos, newCursorPos)
+    }, 0)
+
+    // 이모지 피커 닫기
+    setShowEmojiPicker(false)
   }
 
   const removeImage = (index: number) => {
@@ -416,12 +435,6 @@ const PostWrite = () => {
     }))
   }
 
-  const removeEmoji = (index: number) => {
-    setPostData(prev => ({
-      ...prev,
-      emojis: prev.emojis.filter((_: string, i: number) => i !== index)
-    }))
-  }
 
   const nextImage = () => {
     setCurrentImageIndex(prev => 
@@ -476,6 +489,10 @@ const PostWrite = () => {
         throw new Error('작성자 ID가 설정되지 않았습니다. 다시 시도해주세요.')
       }
       
+      // content에서 이모지 추출 (간단한 이모지 패턴)
+      // 이모지는 content에 포함되어 있으므로 빈 배열로 전송 (필요시 나중에 content에서 파싱 가능)
+      const extractedEmojis: string[] = []
+
       // community_posts 테이블에 게시글 저장
       const { error: insertError } = await supabase
         .from('community_posts')
@@ -484,7 +501,7 @@ const PostWrite = () => {
           location: postData.location,
           hashtags: postData.hashtags,
           images: postData.images,
-          emojis: postData.emojis,
+          emojis: extractedEmojis,
           category: postData.category,
           author_id: postData.author_id,
           author_name: postData.author_name,
@@ -551,20 +568,26 @@ const PostWrite = () => {
           <div className="mb-8">
             <label className="block text-sm font-medium text-gray-700 mb-3 ml-4">내용</label>
             <textarea
+              ref={textareaRef}
               value={postData.content}
               onChange={handleContentChange}
               onKeyDown={handleKeyDown}
               placeholder="무엇을 공유하고 싶으신가요? #해시태그 띄워쓰기를 활용해 생성해 보세요 (예: #어린이집 #육아팁)"
-              className="w-full p-4 border-t border-b border-gray-300 focus:ring-2 focus:ring-[#fb8678] focus:border-transparent resize-none text-gray-800 text-base leading-relaxed"
+              className="w-full p-4 border-t border-b border-gray-300 focus:ring-2 focus:ring-[#fb8678] focus:border-transparent resize-none text-gray-800 text-base leading-relaxed rounded-none"
               rows={12}
             />
             
             {/* Content Action Icons */}
-            <div className="flex items-center justify-center py-3 mx-4 space-x-16">
-              <label className="flex flex-col items-center text-gray-500 hover:text-[#fb8678] hover:scale-105 transition-all duration-200 group cursor-pointer">
-                <div className="p-3 rounded-xl bg-[#fb8678] shadow-sm group-hover:shadow-md transition-all">
-                  <Image className="w-5 h-5 text-white" />
+            <div className="flex items-center justify-center py-4 mx-4 gap-8">
+              {/* 이미지 업로드 버튼 */}
+              <label className="flex flex-col items-center gap-2 cursor-pointer group">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#fb8678] to-[#ff9d8a] rounded-2xl blur-sm opacity-60 group-hover:opacity-80 transition-opacity"></div>
+                  <div className="relative p-4 rounded-2xl bg-gradient-to-br from-[#fb8678] to-[#ff9d8a] shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300 transform">
+                    <Image className="w-6 h-6 text-white" />
+                  </div>
                 </div>
+                <span className="text-xs font-medium text-gray-400 group-hover:text-[#fb8678] transition-colors">사진</span>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -573,23 +596,39 @@ const PostWrite = () => {
                   className="hidden"
                 />
               </label>
+              
+              {/* 이모지 버튼 */}
               <button 
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="flex flex-col items-center text-gray-500 hover:text-[#fb8678] hover:scale-105 transition-all duration-200 group"
+                className="flex flex-col items-center gap-2 group"
               >
-                <div className={`p-3 rounded-xl shadow-sm group-hover:shadow-md transition-all ${
-                  showEmojiPicker ? 'bg-[#e67567]' : 'bg-[#fb8678]'
-                }`}>
-                  <Smile className="w-5 h-5 text-white" />
+                <div className="relative">
+                  <div className={`absolute inset-0 rounded-2xl blur-sm opacity-60 group-hover:opacity-80 transition-opacity ${
+                    showEmojiPicker 
+                      ? 'bg-gradient-to-br from-[#ff6b9d] to-[#ff8fb3]' 
+                      : 'bg-gradient-to-br from-[#fb8678] to-[#ff9d8a]'
+                  }`}></div>
+                  <div className={`relative p-4 rounded-2xl shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300 transform ${
+                    showEmojiPicker 
+                      ? 'bg-gradient-to-br from-[#ff6b9d] to-[#ff8fb3]' 
+                      : 'bg-gradient-to-br from-[#fb8678] to-[#ff9d8a]'
+                  }`}>
+                    <Smile className="w-6 h-6 text-white" />
+                  </div>
                 </div>
+                <span className="text-xs font-medium text-gray-400 group-hover:text-[#fb8678] transition-colors">이모지</span>
               </button>
               
               {/* 어린이집/유치원 선택 (카테고리가 어린이집,유치원일 경우에만 표시) */}
               {category === '어린이집,유치원' && (
-                <button className="flex flex-col items-center text-gray-500 hover:text-[#fb8678] hover:scale-105 transition-all duration-200 group">
-                  <div className="w-11 h-11 rounded-xl bg-[#fb8678] shadow-sm group-hover:shadow-md transition-all flex items-center justify-center">
-                    <span className="text-white text-lg font-medium">🏫</span>
+                <button className="flex flex-col items-center gap-2 group">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#a8e6cf] to-[#dcedc1] rounded-2xl blur-sm opacity-60 group-hover:opacity-80 transition-opacity"></div>
+                    <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-[#a8e6cf] to-[#dcedc1] shadow-lg group-hover:shadow-xl group-hover:scale-110 transition-all duration-300 transform flex items-center justify-center">
+                      <span className="text-2xl">🏫</span>
+                    </div>
                   </div>
+                  <span className="text-xs font-medium text-gray-400 group-hover:text-[#4ecdc4] transition-colors">시설</span>
                 </button>
               )}
             </div>
@@ -679,24 +718,6 @@ const PostWrite = () => {
               </div>
             )}
 
-            {/* Emojis Display */}
-            {postData.emojis.length > 0 && (
-              <div className="mt-4 mx-4">
-                <div className="flex flex-wrap gap-2">
-                  {postData.emojis.map((emoji, index) => (
-                    <div key={index} className="relative">
-                      <span className="text-2xl">{emoji}</span>
-                      <button
-                        onClick={() => removeEmoji(index)}
-                        className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
-                      >
-                        <X className="w-2 h-2" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Emoji Picker */}
             {showEmojiPicker && (

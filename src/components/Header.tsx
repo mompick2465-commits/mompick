@@ -157,13 +157,13 @@ const Header = () => {
             <div className="relative">
               <div 
                 onClick={() => navigate('/profile')}
-                className="w-10 h-10 bg-[#fb8678] rounded-2xl flex items-center justify-center shadow-lg hover:shadow-xl transition-shadow cursor-pointer overflow-hidden"
+                className="w-10 h-10 bg-gray-100 rounded-2xl flex items-center justify-center shadow-lg hover:shadow-xl transition-shadow cursor-pointer overflow-hidden"
               >
                 {profileImage ? (
                   <img
                     src={profileImage}
                     alt="프로필 사진"
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover rounded-2xl"
                     onError={(e) => {
                       console.error('프로필 이미지 로딩 실패:', profileImage)
                       e.currentTarget.style.display = 'none'
@@ -171,7 +171,11 @@ const Header = () => {
                     }}
                   />
                 ) : null}
-                <span className={`text-white font-bold text-sm ${profileImage ? 'hidden' : ''}`}>👤</span>
+                {!profileImage && (
+                  <span className="text-sm font-medium text-gray-600">
+                    {currentUser?.nickname?.charAt(0) || currentUser?.full_name?.charAt(0) || '👤'}
+                  </span>
+                )}
               </div>
               
               {/* 자녀 프로필 사진 배지 (학부모) 또는 교사 배지 (교사) */}

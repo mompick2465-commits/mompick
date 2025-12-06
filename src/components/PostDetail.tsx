@@ -1833,7 +1833,7 @@ const PostDetail = () => {
                   <img
                     src={post.author_profile_image}
                     alt={`${post.author_name}의 프로필`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover rounded-2xl"
                     onError={(e) => {
                       // 프로필 이미지 로드 실패 시 이니셜 표시
                       const target = e.target as HTMLImageElement
@@ -1841,16 +1841,18 @@ const PostDetail = () => {
                       const parent = target.parentElement
                       if (parent) {
                         parent.innerHTML = `
-                          <div class="w-full h-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-3xl text-white">
-                          ${post.author_name.charAt(0)}
-                        </div>
-                      `
+                          <div class="w-full h-full bg-gray-100 rounded-2xl flex items-center justify-center">
+                            <span class="text-sm font-medium text-gray-600">${post.author_name.charAt(0)}</span>
+                          </div>
+                        `
                       }
                     }}
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-3xl text-white">
-                    {post.author_name.charAt(0)}
+                  <div className="w-full h-full bg-gray-100 rounded-2xl flex items-center justify-center">
+                    <span className="text-sm font-medium text-gray-600">
+                      {post.author_name.charAt(0)}
+                    </span>
                   </div>
                 )}
               </div>
@@ -2027,7 +2029,7 @@ const PostDetail = () => {
                   <div className="flex space-x-3">
                     <div className="relative w-10 h-10">
                       <div 
-                        className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer"
+                        className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer shadow-lg"
                         style={{ borderRadius: '12px' }}
                         onClick={(e) => {
                           e.stopPropagation() // 댓글 클릭 이벤트 전파 방지
@@ -2050,9 +2052,12 @@ const PostDetail = () => {
                             src={comment.user_profile_image}
                             alt={`${comment.user_name}의 프로필`}
                             className="w-full h-full object-cover"
+                            style={{ borderRadius: '12px' }}
                           />
                         ) : (
-                          comment.user_name.charAt(0)
+                          <span className="text-sm font-medium text-gray-600">
+                            {comment.user_name.charAt(0)}
+                          </span>
                         )}
                       </div>
                       
@@ -2285,7 +2290,7 @@ const PostDetail = () => {
                             <div key={reply.id} className="flex space-x-3">
                               <div className="relative w-6 h-6">
                                 <div 
-                                  className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
+                                  className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer shadow-lg"
                                   style={{ borderRadius: '8px' }}
                                   onClick={(e) => {
                                     e.stopPropagation() // 답글 클릭 이벤트 전파 방지
@@ -2308,9 +2313,12 @@ const PostDetail = () => {
                                       src={reply.user_profile_image}
                                       alt={`${reply.user_name}의 프로필`}
                                       className="w-full h-full object-cover"
+                                      style={{ borderRadius: '8px' }}
                                     />
                                   ) : (
-                                    reply.user_name.charAt(0)
+                                    <span className="text-xs font-medium text-gray-600">
+                                      {reply.user_name.charAt(0)}
+                                    </span>
                                   )}
                                 </div>
                                 
@@ -2531,7 +2539,7 @@ const PostDetail = () => {
                                     <div key={nestedReply.id} className="flex space-x-3">
                                       <div className="relative w-6 h-6">
                                         <div 
-                                          className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
+                                          className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer shadow-lg"
                                           style={{ borderRadius: '8px' }}
                                           onClick={(e) => {
                                             e.stopPropagation() // 답글 클릭 이벤트 전파 방지
@@ -2554,9 +2562,12 @@ const PostDetail = () => {
                                               src={nestedReply.user_profile_image}
                                               alt={`${nestedReply.user_name}의 프로필`}
                                               className="w-full h-full object-cover"
+                                              style={{ borderRadius: '8px' }}
                                             />
                                           ) : (
-                                            nestedReply.user_name.charAt(0)
+                                            <span className="text-xs font-medium text-gray-600">
+                                              {nestedReply.user_name.charAt(0)}
+                                            </span>
                                           )}
                                         </div>
                                       </div>
@@ -2868,7 +2879,7 @@ const PostDetail = () => {
                       <div className="flex space-x-3">
                         <div className="relative w-8 h-8">
                           <div 
-                            className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer"
+                            className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer shadow-lg"
                             style={{ borderRadius: '12px' }}
                             onClick={(e) => {
                               e.stopPropagation() // 댓글 클릭 이벤트 전파 방지
@@ -2891,9 +2902,12 @@ const PostDetail = () => {
                                 src={comment.user_profile_image}
                                 alt={`${comment.user_name}의 프로필`}
                                 className="w-full h-full object-cover"
+                                style={{ borderRadius: '12px' }}
                               />
                             ) : (
-                              comment.user_name.charAt(0)
+                              <span className="text-sm font-medium text-gray-600">
+                                {comment.user_name.charAt(0)}
+                              </span>
                             )}
                           </div>
                           
@@ -3128,7 +3142,7 @@ const PostDetail = () => {
                                 <div key={reply.id} className="flex space-x-3">
                                   <div className="relative w-6 h-6">
                                     <div 
-                                      className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
+                                      className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer shadow-lg"
                                       style={{ borderRadius: '8px' }}
                                       onClick={(e) => {
                                         e.stopPropagation() // 답글 클릭 이벤트 전파 방지
@@ -3151,9 +3165,12 @@ const PostDetail = () => {
                                           src={reply.user_profile_image}
                                           alt={`${reply.user_name}의 프로필`}
                                           className="w-full h-full object-cover"
+                                          style={{ borderRadius: '8px' }}
                                         />
                                       ) : (
-                                        reply.user_name.charAt(0)
+                                        <span className="text-xs font-medium text-gray-600">
+                                          {reply.user_name.charAt(0)}
+                                        </span>
                                       )}
                                     </div>
                                     
@@ -3375,7 +3392,7 @@ const PostDetail = () => {
                                         <div key={nestedReply.id} className="flex space-x-3">
                                           <div className="relative w-6 h-6">
                                             <div 
-                                              className="w-full h-full overflow-hidden bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-white text-xs font-medium cursor-pointer"
+                                              className="w-full h-full overflow-hidden bg-gray-100 flex items-center justify-center cursor-pointer shadow-lg"
                                               style={{ borderRadius: '8px' }}
                                               onClick={(e) => {
                                                 e.stopPropagation() // 답글 클릭 이벤트 전파 방지
@@ -3398,9 +3415,12 @@ const PostDetail = () => {
                                                   src={nestedReply.user_profile_image}
                                                   alt={`${nestedReply.user_name}의 프로필`}
                                                   className="w-full h-full object-cover"
+                                                  style={{ borderRadius: '8px' }}
                                                 />
                                               ) : (
-                                                nestedReply.user_name.charAt(0)
+                                                <span className="text-xs font-medium text-gray-600">
+                                                  {nestedReply.user_name.charAt(0)}
+                                                </span>
                                               )}
                                             </div>
                                           </div>

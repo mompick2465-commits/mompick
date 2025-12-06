@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, BookOpen, MapPin, Heart, Trash2 } from 'lucide-react'
+import { ChevronLeft, BookOpen, MapPin, Heart, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { listFavorites, removeFavorite, FavoriteTargetType } from '../utils/favorites'
 import { getReviewStats } from '../utils/kindergartenReviewApi'
 import { getChildcareReviewStats } from '../utils/childcareReviewApi'
+import { getPlaygroundReviewStats } from '../utils/playgroundReviewApi'
 import { regionCodes } from '../utils/kindergartenApi'
 
 interface Favorite {
@@ -197,6 +198,31 @@ const ProfileFavorites = () => {
               } catch {}
               
               return { id: fav.id, region, rating, buildingImage }
+            } else if (fav.target_type === 'playground') {
+              // 지역 정보: sido_code, sgg_code를 이름으로 변환
+              region = getRegionNameFromCode(fav.sido_code, fav.sgg_code)
+              
+              // 리뷰 평점만 조회
+              try {
+                const stats = await getPlaygroundReviewStats(String(fav.target_id))
+                rating = stats.average_rating || 0
+              } catch {}
+              
+              // 건물 이미지 조회 (playground_custom_info 테이블)
+              try {
+                const { data: customInfo } = await supabase
+                  .from('playground_custom_info')
+                  .select('building_images')
+                  .eq('playground_id', fav.target_id)
+                  .eq('is_active', true)
+                  .maybeSingle()
+                
+                if (customInfo && customInfo.building_images && customInfo.building_images.length > 0) {
+                  buildingImage = customInfo.building_images[0]
+                }
+              } catch {}
+              
+              return { id: fav.id, region, rating, buildingImage }
             }
           } catch {}
           return { id: fav.id, region: '', rating: 0, buildingImage: '' }
@@ -232,16 +258,16 @@ const ProfileFavorites = () => {
   return (
     <div className="min-h-screen bg-white">
       {/* 헤더 */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
+      <div className="bg-white/80 backdrop-blur-sm border-b border-white/50 shadow-lg sticky top-0 z-10">
         <div className="px-4 py-4">
           <div className="flex items-center justify-between">
             <button
               onClick={() => navigate('/profile')}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              className="p-1.5 hover:bg-white/50 rounded-lg transition-colors"
             >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
+              <ChevronLeft className="w-4 h-4 text-gray-700" />
             </button>
-            <h1 className="text-xl font-semibold text-gray-900">내가 찜한 시설</h1>
+            <h1 className="text-lg font-bold text-gray-900">내가 찜한 시설</h1>
             <div className="w-10"></div>
           </div>
         </div>
@@ -317,11 +343,11 @@ const ProfileFavorites = () => {
                           <span className="text-[10px] text-gray-500 truncate">{favoriteRegions[fav.id] || ''}</span>
                         </div>
                         <div className="text-[10px] text-gray-400 mt-1">
-                          {fav.target_type === 'kindergarten' ? '유치원' : fav.target_type === 'childcare' ? '어린이집' : fav.target_type}
+                          {fav.target_type === 'kindergarten' ? '유치원' : fav.target_type === 'childcare' ? '어린이집' : fav.target_type === 'playground' ? '놀이시설' : fav.target_type}
                         </div>
                       </div>
                       {/* rating badge */}
-                      {(fav.target_type === 'kindergarten' || fav.target_type === 'childcare') && (
+                      {(fav.target_type === 'kindergarten' || fav.target_type === 'childcare' || fav.target_type === 'playground') && (
                         <div className="ml-3 flex items-center px-2 py-0.5 bg-black/80 border border-white rounded-xl">
                           <Heart className="w-3 h-3 text-[#fb8678] fill-current mr-1" />
                           <span className="text-white text-[11px] font-bold">{(favoriteRatings[fav.id] || 0).toFixed(1)}</span>
